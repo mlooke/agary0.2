@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>متابعة عقود الإيجار</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=Tajawal:wght@400;500;700&display=swap');
+
+:root{
+  --bg:#EFEEE6;
+  --surface:#FFFFFF;
+  --surface-alt:#F7F5EC;
+  --ink:#1B2A28;
+  --ink-soft:#5C6864;
+  --ink-faint:#8B958F;
+  --primary:#0F6E5C;
+  --primary-dark:#0A4F42;
+  --primary-tint:#E3EFEA;
+  --gold:#A9791F;
+  --gold-tint:#F3ECD8;
+  --success:#2E8B57;
+  --success-tint:#E4F2E9;
+  --warning:#C97F1E;
+  --warning-tint:#FBEEDD;
+  --danger:#BE3B2C;
+  --danger-tint:#FAE7E3;
+  --gray:#8B958F;
+  --gray-tint:#EEEEEA;
+  --border:#E1DCC9;
+  --shadow: 0 1px 2px rgba(27,42,40,0.04), 0 6px 20px rgba(27,42,40,0.06);
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'Tajawal',sans-serif;
+  min-height:100vh;
+  padding:28px 20px 80px;
+}
+h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
+
+.wrap{max-width:1080px;margin:0 auto;}
+
+.topbar{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  margin-bottom:22px;flex-wrap:wrap;gap:14px;
+}
+.topbar h1{
+  font-size:24px;font-weight:800;color:var(--primary-dark);margin:0 0 4px;
+  display:flex;align-items:center;gap:10px;
+}
+.topbar .sub{color:var(--ink-soft);font-size:13.5px;margin:0;}
+.db-badge{
+  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--primary-dark);
+  background:var(--primary-tint);border-radius:20px;padding:4px 10px;margin-top:8px;font-weight:700;
+}
+.db-badge.offline{background:var(--danger-tint);color:var(--danger);}
+.top-actions{display:flex;gap:10px;}
+.btn{
+  border:none;border-radius:10px;padding:10px 18px;font-family:'Tajawal',sans-serif;
+  font-weight:700;font-size:14px;cursor:pointer;transition:transform .12s ease, box-shadow .12s ease;
+  display:inline-flex;align-items:center;gap:6px;
+}
+.btn:active{transform:scale(0.97);}
+.btn-primary{background:var(--primary);color:#fff;box-shadow:0 4px 14px rgba(15,110,92,0.25);}
+.btn-primary:hover{background:var(--primary-dark);}
+.btn-ghost{background:var(--surface);color:var(--ink);border:1px solid var(--border);}
+.btn-ghost:hover{background:var(--surface-alt);}
+.btn-sm{padding:6px 12px;font-size:12.5px;border-radius:8px;}
+.btn-danger-ghost{background:var(--surface);color:var(--danger);border:1px solid var(--danger-tint);}
+
+.alerts-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+.alert-card{
+  background:var(--surface);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);
+  border-inline-start:4px solid var(--gray);display:flex;align-items:center;gap:12px;
+}
+.alert-card .num{font-family:'Cairo',sans-serif;font-size:26px;font-weight:800;line-height:1;}
+.alert-card .lbl{font-size:12.5px;color:var(--ink-soft);font-weight:500;}
+.alert-card.danger{border-inline-start-color:var(--danger);}
+.alert-card.danger .num{color:var(--danger);}
+.alert-card.warning{border-inline-start-color:var(--warning);}
+.alert-card.warning .num{color:var(--warning);}
+.alert-card.info{border-inline-start-color:var(--primary);}
+.alert-card.info .num{color:var(--primary);}
+
+.filters{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;}
+.filters input[type=text]{
+  flex:1;min-width:200px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);
+  font-family:'Tajawal',sans-serif;font-size:13.5px;background:var(--surface);color:var(--ink);
+}
+.filters select{
+  padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);
+  font-family:'Tajawal',sans-serif;font-size:13.5px;color:var(--ink);
+}
+
+.empty{
+  text-align:center;padding:70px 20px;color:var(--ink-soft);background:var(--surface);
+  border-radius:16px;border:1px dashed var(--border);
+}
+.empty .icon{font-size:34px;margin-bottom:10px;}
+.empty h3{margin:0 0 6px;color:var(--ink);font-size:17px;}
+.empty p{margin:0 0 16px;font-size:13.5px;}
+
+.cards{display:flex;flex-direction:column;gap:14px;}
+.card{
+  background:var(--surface);border-radius:16px;box-shadow:var(--shadow);
+  padding:20px 22px;position:relative;border-inline-start:5px solid var(--gray);
+}
+.card.active{border-inline-start-color:var(--success);}
+.card.upcoming{border-inline-start-color:var(--primary);}
+.card.expired{border-inline-start-color:var(--ink-faint);}
+.card.cancelled{border-inline-start-color:var(--danger); opacity:0.75;}
+.cards .card.card-clickable{cursor:pointer;transition:box-shadow .12s ease;}
+.cards .card.card-clickable:hover{box-shadow:0 2px 4px rgba(27,42,40,0.06), 0 10px 26px rgba(27,42,40,0.1);}
+
+.next-payment-row{
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+  padding-top:12px;margin-bottom:14px;border-top:1px solid var(--border);
+}
+.next-payment{font-size:13px;color:var(--ink-soft);}
+.next-payment .np-label{color:var(--ink-soft);}
+.next-payment .np-amount{font-weight:700;color:var(--gold);}
+.next-payment-done{font-size:13px;color:var(--success);font-weight:700;}
+.overdue-flag{
+  background:var(--danger-tint);color:var(--danger);font-weight:700;font-size:12px;
+  padding:4px 10px;border-radius:20px;white-space:nowrap;
+}
+
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:14px;}
+.prop-name{font-family:'Cairo',sans-serif;font-weight:800;font-size:18px;color:var(--ink);margin:0 0 4px;}
+.prop-dates{font-size:12.5px;color:var(--ink-soft);}
+
+.stamp{
+  width:64px;height:64px;border-radius:50%;border:2px dashed currentColor;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;
+  transform:rotate(-8deg);flex-shrink:0;
+}
+.stamp span{font-family:'Cairo',sans-serif;font-weight:800;font-size:11px;line-height:1.15;text-align:center;}
+.stamp.active{color:var(--success);}
+.stamp.upcoming{color:var(--primary);}
+.stamp.expired{color:var(--ink-faint);}
+.stamp.cancelled{color:var(--danger);}
+
+.timeline{margin:16px 0 18px;}
+.timeline-track{
+  position:relative;height:10px;background:var(--surface-alt);border-radius:6px;
+  border:1px solid var(--border);overflow:visible;
+}
+.timeline-fill{position:absolute;top:0;right:0;height:100%;background:var(--primary-tint);border-radius:6px;}
+.timeline-marker{
+  position:absolute;top:50%;width:14px;height:14px;border-radius:50%;border:2.5px solid #fff;
+  transform:translate(50%,-50%);box-shadow:0 1px 3px rgba(0,0,0,0.25);cursor:default;
+}
+.timeline-marker.paid{background:var(--success);}
+.timeline-marker.due-soon{background:var(--warning);}
+.timeline-marker.overdue{background:var(--danger);}
+.timeline-marker.upcoming{background:var(--gray);}
+.timeline-today{position:absolute;top:-4px;width:2px;height:18px;background:var(--ink);opacity:0.5;}
+.timeline-labels{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-faint);margin-top:6px;}
+
+.value-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+.value-box{background:var(--gold-tint);border-radius:10px;padding:10px 12px;}
+.value-box .k{font-size:11.5px;color:var(--ink-soft);margin-bottom:3px;}
+.value-box .v{font-family:'Cairo',sans-serif;font-weight:700;font-size:15px;color:var(--gold);}
+.value-box.total .v{color:var(--primary-dark);}
+.value-box.total{background:var(--primary-tint);}
+
+.payments{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.payment{
+  border:1px solid var(--border);border-radius:10px;padding:10px 12px;
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+}
+.payment .p-label{font-size:12.5px;color:var(--ink-soft);margin-bottom:2px;}
+.payment .p-date{font-family:'Cairo',sans-serif;font-weight:700;font-size:13.5px;}
+.pay-toggle{
+  border:none;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;
+  cursor:pointer;white-space:nowrap;font-family:'Tajawal',sans-serif;
+}
+.pay-toggle.paid{background:var(--success-tint);color:var(--success);}
+.pay-toggle.unpaid-normal{background:var(--gray-tint);color:var(--ink-soft);}
+.pay-toggle.unpaid-due{background:var(--warning-tint);color:var(--warning);}
+.pay-toggle.unpaid-overdue{background:var(--danger-tint);color:var(--danger);}
+
+.card-actions{display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px;}
+
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(27,42,40,0.45);display:none;
+  align-items:center;justify-content:center;z-index:50;padding:20px;
+}
+.modal-overlay.open{display:flex;}
+.modal{
+  background:var(--surface);border-radius:18px;padding:26px 28px;width:100%;max-width:560px;
+  max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);
+}
+.modal h2{margin:0 0 18px;font-size:19px;color:var(--primary-dark);}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;}
+.field input[type=text],.field input[type=number],.field input[type=date],.field select{
+  width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--border);
+  font-family:'Tajawal',sans-serif;font-size:13.5px;background:var(--surface-alt);color:var(--ink);
+}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.payment-row{
+  border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;
+  background:var(--surface-alt);
+}
+.payment-row .field-row{grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end;}
+.payment-row .field{margin-bottom:0;}
+.payment-row input[readonly],.payment-row input[disabled]{opacity:0.75;}
+.check-row{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
+.check-row input{width:16px;height:16px;}
+.check-row label{font-size:13px;color:var(--ink);}
+.tax-hint{font-size:11.5px;color:var(--ink-faint);margin-top:4px;}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+fieldset{border:1px solid var(--border);border-radius:10px;margin:0 0 14px;padding:12px 14px;}
+legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
+
+@media(max-width:640px){
+  .alerts-row{grid-template-columns:1fr;}
+  .value-row{grid-template-columns:1fr;}
+  .payments{grid-template-columns:1fr;}
+  .field-row{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>📑 متابعة عقود الإيجار</h1>
+      <p class="sub">إدارة العقارات، الدفعات، وتنبيهات الاستحقاق في مكان واحد</p>
+      <span class="db-badge" id="dbBadge">● متصل بقاعدة البيانات المحلية</span>
+    </div>
+    <div class="top-actions">
+      <button class="btn btn-ghost" id="settingsBtn">⚙️ الإعدادات</button>
+      <button class="btn btn-primary" id="addBtn">+ إضافة عقد</button>
+    </div>
+  </div>
+
+  <div class="alerts-row">
+    <div class="alert-card danger" id="alertOverdue"><div><div class="num">0</div><div class="lbl">دفعات متأخرة</div></div></div>
+    <div class="alert-card warning" id="alertDueSoon"><div><div class="num">0</div><div class="lbl">دفعات مستحقة قريبًا</div></div></div>
+    <div class="alert-card info" id="alertEnding"><div><div class="num">0</div><div class="lbl">عقود تقترب من الانتهاء</div></div></div>
+  </div>
+
+  <div class="filters">
+    <input type="text" id="searchInput" placeholder="ابحث باسم العقار...">
+    <select id="statusFilter">
+      <option value="all">كل الحالات</option>
+      <option value="active">نشط</option>
+      <option value="upcoming">قادم</option>
+      <option value="expired">منتهي</option>
+      <option value="cancelled">ملغى</option>
+    </select>
+  </div>
+
+  <div id="cardsContainer" class="cards"></div>
+</div>
+
+<div class="modal-overlay" id="contractModalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">إضافة عقد جديد</h2>
+    <form id="contractForm">
+      <input type="hidden" id="contractId">
+      <div class="field">
+        <label>اسم العقار</label>
+        <input type="text" id="propertyName" required placeholder="مثال: شقة برج النخيل - الدور 3">
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="cancelledCheck">
+        <label for="cancelledCheck">العقد ملغى</label>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>تاريخ بداية العقد</label><input type="date" id="startDate" required></div>
+        <div class="field"><label>تاريخ نهاية العقد</label><input type="date" id="endDate" required></div>
+      </div>
+      <fieldset>
+        <legend>قيمة العقد</legend>
+        <div class="field">
+          <label>القيمة الإجمالية شاملة الضريبة</label>
+          <input type="number" id="totalValue" min="0" step="0.01" required placeholder="0.00">
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="hasTaxCheck" checked>
+          <label for="hasTaxCheck">يشمل ضريبة القيمة المضافة</label>
+        </div>
+        <div class="field" id="taxRateField">
+          <label>نسبة الضريبة (%)</label>
+          <input type="number" id="taxRate" min="0" step="0.01" value="15">
+        </div>
+        <div class="tax-hint" id="taxPreview"></div>
+      </fieldset>
+      <fieldset>
+        <legend>الدفعات</legend>
+        <div class="field-row">
+          <div class="field">
+            <label>نوع الدفع</label>
+            <select id="paymentFrequency">
+              <option value="yearly">سنوي</option>
+              <option value="monthly">شهري</option>
+              <option value="custom" selected>مخصص</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>عدد الدفعات</label>
+            <input type="number" id="paymentCount" min="1" step="1" value="2">
+          </div>
+        </div>
+        <div class="tax-hint" id="paymentCountHint" style="margin-bottom:10px;"></div>
+        <div id="paymentsListContainer"></div>
+      </fieldset>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelModalBtn">إلغاء</button>
+        <button type="submit" class="btn btn-primary" id="saveBtn">حفظ العقد</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="settingsModalOverlay">
+  <div class="modal" style="max-width:420px;">
+    <h2>إعدادات التنبيهات</h2>
+    <div class="field"><label>تنبيه قبل استحقاق الدفعة بعدد أيام</label><input type="number" id="paymentAlertDays" min="0" step="1"></div>
+    <div class="field"><label>تنبيه قبل نهاية العقد بعدد أيام</label><input type="number" id="endAlertDays" min="0" step="1"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="closeSettingsBtn">إغلاق</button>
+      <button type="button" class="btn btn-primary" id="saveSettingsBtn">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let contracts = [];
+let settings = { paymentAlertDays: 7, endAlertDays: 30 };
+let currentPayments = []; // { date, status, amount } — تُبنى منها الدفعات النهائية عند الحفظ
+
+const cardsContainer = document.getElementById('cardsContainer');
+const contractModalOverlay = document.getElementById('contractModalOverlay');
+const settingsModalOverlay = document.getElementById('settingsModalOverlay');
+const contractForm = document.getElementById('contractForm');
+
+const freqLabel = { yearly: 'سنوي', monthly: 'شهري', custom: 'مخصص' };
+
+function labelForIndex(freq, idx){
+  if(freq === 'yearly') return `دفعة السنة ${idx + 1}`;
+  if(freq === 'monthly') return `دفعة الشهر ${idx + 1}`;
+  return `الدفعة ${idx + 1}`;
+}
+
+// يولّد تواريخ الدفعات بدءًا من تاريخ بداية العقد، بعدد الدفعات الذي يحدده المستخدم
+function generateScheduleDatesByCount(startStr, count, freq){
+  if(!startStr || count <= 0) return [];
+  const start = new Date(startStr);
+  if(isNaN(start)) return [];
+  const dates = [];
+  for(let i = 0; i < count; i++){
+    const d = new Date(start);
+    if(freq === 'yearly') d.setFullYear(d.getFullYear() + i);
+    else d.setMonth(d.getMonth() + i);
+    dates.push(d.toISOString().slice(0,10));
+  }
+  return dates;
+}
+
+// يقسّم المبلغ الإجمالي على عدد الدفعات، ويضيف فرق التقريب للدفعة الأخيرة كي يتطابق المجموع تمامًا
+function computeAmounts(total, count){
+  if(count <= 0) return [];
+  const base = Math.floor((total / count) * 100) / 100;
+  const amounts = new Array(count).fill(base);
+  const distributed = base * count;
+  const remainder = Math.round((total - distributed) * 100) / 100;
+  amounts[amounts.length - 1] = Math.round((amounts[amounts.length - 1] + remainder) * 100) / 100;
+  return amounts;
+}
+
+function recalcAmounts(){
+  const total = parseFloat(document.getElementById('totalValue').value) || 0;
+  const amounts = computeAmounts(total, currentPayments.length);
+  currentPayments.forEach((p, i) => { p.amount = amounts[i] || 0; });
+}
+
+// يطبّق عدد الدفعات الذي كتبه المستخدم: يولّد التواريخ تلقائيًا في وضع سنوي/شهري،
+// أو يضيف/يحذف صفوفًا فارغة في الوضع المخصص للوصول لنفس العدد
+function applyPaymentCount(){
+  const freq = document.getElementById('paymentFrequency').value;
+  let count = parseInt(document.getElementById('paymentCount').value) || 0;
+  if(count < 1) count = 1;
+  document.getElementById('paymentCount').value = count;
+
+  if(freq === 'custom'){
+    if(count > currentPayments.length){
+      while(currentPayments.length < count){
+        const lastDate = currentPayments.length ? currentPayments[currentPayments.length - 1].date : document.getElementById('startDate').value;
+        currentPayments.push({ date: lastDate || '', status: 'unpaid', amount: 0 });
+      }
+    }else{
+      currentPayments = currentPayments.slice(0, count);
+    }
+  }else{
+    const start = document.getElementById('startDate').value;
+    const dates = generateScheduleDatesByCount(start, count, freq);
+    const prevByDate = {};
+    currentPayments.forEach(p => { prevByDate[p.date] = p.status; });
+    currentPayments = dates.map(d => ({ date: d, status: prevByDate[d] || 'unpaid', amount: 0 }));
+  }
+  recalcAmounts();
+  renderPaymentsFields();
+}
+
+function renderPaymentsFields(){
+  const freq = document.getElementById('paymentFrequency').value;
+  const container = document.getElementById('paymentsListContainer');
+
+  const hint = document.getElementById('paymentCountHint');
+  hint.textContent = currentPayments.length
+    ? `عدد الدفعات: ${currentPayments.length} · قيمة كل دفعة تُحسب تلقائيًا (الإجمالي ÷ عدد الدفعات)`
+    : 'حدد عدد الدفعات وتاريخ بداية العقد';
+
+  container.innerHTML = currentPayments.map((p, idx) => `
+    <div class="payment-row">
+      <div class="field-row">
+        <div class="field">
+          <label>${escapeHtml(labelForIndex(freq, idx))}</label>
+          <input type="date" data-idx="${idx}" class="pay-date-input" value="${p.date || ''}" ${freq !== 'custom' ? 'disabled' : ''} required>
+        </div>
+        <div class="field">
+          <label>المبلغ</label>
+          <input type="number" value="${(p.amount || 0).toFixed(2)}" readonly disabled>
+        </div>
+        <div class="field">
+          <label>حالة السداد</label>
+          <select data-idx="${idx}" class="pay-status-input">
+            <option value="unpaid" ${p.status === 'unpaid' ? 'selected' : ''}>غير مدفوعة</option>
+            <option value="paid" ${p.status === 'paid' ? 'selected' : ''}>مدفوعة</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.pay-date-input').forEach(inp => {
+    inp.addEventListener('change', (e) => {
+      currentPayments[Number(e.target.dataset.idx)].date = e.target.value;
+    });
+  });
+  container.querySelectorAll('.pay-status-input').forEach(sel => {
+    sel.addEventListener('change', (e) => {
+      currentPayments[Number(e.target.dataset.idx)].status = e.target.value;
+    });
+  });
+}
+
+function todayStr(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
+function fmtDate(iso){ if(!iso) return '—'; return new Date(iso).toLocaleDateString('ar-EG',{year:'numeric',month:'short',day:'numeric'}); }
+function fmtMoney(n){ if(isNaN(n)) return '0.00'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function diffDays(fromDate, toDate){ return Math.round((toDate - fromDate) / (1000*60*60*24)); }
+
+async function apiGet(url){
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('request failed');
+  return res.json();
+}
+async function apiSend(url, method, body){
+  const res = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if(!res.ok) throw new Error('request failed');
+  return res.json();
+}
+
+async function loadData(){
+  try{
+    contracts = await apiGet('/api/contracts');
+    settings = await apiGet('/api/settings');
+    setDbStatus(true);
+  }catch(e){
+    setDbStatus(false);
+  }
+}
+
+function setDbStatus(ok){
+  const badge = document.getElementById('dbBadge');
+  if(ok){
+    badge.textContent = '● متصل بقاعدة البيانات المحلية';
+    badge.classList.remove('offline');
+  }else{
+    badge.textContent = '● تعذر الاتصال بالخادم — شغّل الأمر npm start';
+    badge.classList.add('offline');
+  }
+}
+
+function getStatus(c){
+  if(c.cancelled) return 'cancelled';
+  const t = todayStr(), s = new Date(c.startDate), e = new Date(c.endDate);
+  if(t < s) return 'upcoming';
+  if(t > e) return 'expired';
+  return 'active';
+}
+const statusLabel = { active:'نشط', upcoming:'قادم', expired:'منتهي', cancelled:'ملغى' };
+
+function paymentUrgency(payment){
+  if(payment.status === 'paid') return 'paid';
+  const dd = diffDays(todayStr(), new Date(payment.date));
+  if(dd < 0) return 'overdue';
+  if(dd <= settings.paymentAlertDays) return 'due-soon';
+  return 'upcoming';
+}
+
+function computeTax(total, hasTax, rate){
+  if(!hasTax || !rate) return { net: total, tax: 0 };
+  const net = total / (1 + rate/100);
+  return { net, tax: total - net };
+}
+
+function renderTimeline(c){
+  const s = new Date(c.startDate), e = new Date(c.endDate), t = todayStr();
+  const total = Math.max(1, e - s);
+  const elapsedPct = Math.min(100, Math.max(0, ((t - s) / total) * 100));
+  const markers = (c.payments || []).map(p => {
+    const pct = Math.min(100, Math.max(0, ((new Date(p.date) - s) / total) * 100));
+    const u = paymentUrgency(p);
+    return `<div class="timeline-marker ${u}" style="right:${pct}%" title="${escapeHtml(p.label)} · ${fmtMoney(p.amount || 0)}"></div>`;
+  }).join('');
+  const todayInRange = t >= s && t <= e;
+  return `
+  <div class="timeline">
+    <div class="timeline-track">
+      <div class="timeline-fill" style="width:${elapsedPct}%"></div>
+      ${todayInRange ? `<div class="timeline-today" style="right:${elapsedPct}%"></div>` : ''}
+      ${markers}
+    </div>
+    <div class="timeline-labels"><span>${fmtDate(c.endDate)}</span><span>${fmtDate(c.startDate)}</span></div>
+  </div>`;
+}
+
+function payToggleClass(payment){
+  if(payment.status === 'paid') return 'paid';
+  const u = paymentUrgency(payment);
+  if(u === 'overdue') return 'unpaid-overdue';
+  if(u === 'due-soon') return 'unpaid-due';
+  return 'unpaid-normal';
+}
+
+function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function getNextPayment(c){
+  const unpaid = (c.payments || [])
+    .filter(p => p.status !== 'paid')
+    .slice()
+    .sort((a,b) => new Date(a.date) - new Date(b.date));
+  return unpaid.length ? unpaid[0] : null;
+}
+
+function hasOverduePayment(c){
+  return (c.payments || []).some(p => p.status !== 'paid' && paymentUrgency(p) === 'overdue');
+}
+
+function renderProgressBar(c){
+  const s = new Date(c.startDate), e = new Date(c.endDate), t = todayStr();
+  const total = Math.max(1, e - s);
+  const elapsedPct = Math.min(100, Math.max(0, ((t - s) / total) * 100));
+  const todayInRange = t >= s && t <= e;
+  return `
+  <div class="timeline">
+    <div class="timeline-track">
+      <div class="timeline-fill" style="width:${elapsedPct}%"></div>
+      ${todayInRange ? `<div class="timeline-today" style="right:${elapsedPct}%"></div>` : ''}
+    </div>
+    <div class="timeline-labels"><span>${fmtDate(c.endDate)}</span><span>${fmtDate(c.startDate)}</span></div>
+  </div>`;
+}
+
+function navigateToList(){ location.hash = ''; render(); }
+function navigateToContract(id){ location.hash = '#/contract/' + id; render(); }
+
+function render(){
+  const match = location.hash.match(/^#\/contract\/(.+)$/);
+  if(match){ renderDetail(match[1]); }
+  else{ renderList(); }
+}
+
+function renderList(){
+  document.querySelector('.alerts-row').style.display = '';
+  document.querySelector('.filters').style.display = '';
+
+  const search = document.getElementById('searchInput').value.trim().toLowerCase();
+  const statusFilterVal = document.getElementById('statusFilter').value;
+
+  let overdueCount = 0, dueSoonCount = 0, endingCount = 0;
+  contracts.forEach(c=>{
+    const st = getStatus(c);
+    c.payments.forEach(p=>{
+      const u = paymentUrgency(p);
+      if(u === 'overdue') overdueCount++;
+      if(u === 'due-soon') dueSoonCount++;
+    });
+    if(st === 'active'){
+      const dd = diffDays(todayStr(), new Date(c.endDate));
+      if(dd >= 0 && dd <= settings.endAlertDays) endingCount++;
+    }
+  });
+  document.querySelector('#alertOverdue .num').textContent = overdueCount;
+  document.querySelector('#alertDueSoon .num').textContent = dueSoonCount;
+  document.querySelector('#alertEnding .num').textContent = endingCount;
+
+  let filtered = contracts.filter(c=>{
+    const matchesSearch = !search || c.propertyName.toLowerCase().includes(search);
+    const matchesStatus = statusFilterVal === 'all' || getStatus(c) === statusFilterVal;
+    return matchesSearch && matchesStatus;
+  });
+
+  if(filtered.length === 0){
+    cardsContainer.innerHTML = `
+      <div class="empty">
+        <div class="icon">🗂️</div>
+        <h3>${contracts.length === 0 ? 'لا توجد عقود بعد' : 'لا توجد نتائج مطابقة'}</h3>
+        <p>${contracts.length === 0 ? 'أضف أول عقد لتبدأ متابعة الدفعات والتنبيهات' : 'جرّب تعديل البحث أو الفلتر'}</p>
+        ${contracts.length === 0 ? '<button class="btn btn-primary" onclick="openAddModal()">+ إضافة عقد</button>' : ''}
+      </div>`;
+    return;
+  }
+
+  cardsContainer.innerHTML = filtered.map(c=>{
+    const st = getStatus(c);
+    const { net, tax } = computeTax(c.totalValue, c.hasTax, c.taxRate);
+    const endDays = diffDays(todayStr(), new Date(c.endDate));
+    const endNote = st === 'active' && endDays <= settings.endAlertDays && endDays >= 0
+      ? `<span style="color:var(--warning);font-weight:700;"> · ينتهي خلال ${endDays} يوم</span>` : '';
+    const nextPay = getNextPayment(c);
+    const overdue = hasOverduePayment(c);
+    return `
+    <div class="card ${st} card-clickable" onclick="navigateToContract('${c.id}')">
+      <div class="card-head">
+        <div>
+          <p class="prop-name">${escapeHtml(c.propertyName)}</p>
+          <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
+        </div>
+        <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
+      </div>
+      ${renderProgressBar(c)}
+      <div class="value-row">
+        <div class="value-box total"><div class="k">الإجمالي شامل الضريبة</div><div class="v">${fmtMoney(c.totalValue)}</div></div>
+        <div class="value-box"><div class="k">الصافي</div><div class="v">${fmtMoney(net)}</div></div>
+        <div class="value-box"><div class="k">الضريبة</div><div class="v">${fmtMoney(tax)}</div></div>
+      </div>
+      <div class="next-payment-row">
+        ${overdue ? `<span class="overdue-flag">⚠ يوجد دفعة متأخرة</span>` : '<span></span>'}
+        ${nextPay
+          ? `<div class="next-payment"><span class="np-label">الدفعة القادمة:</span> ${fmtDate(nextPay.date)} · <span class="np-amount">${fmtMoney(nextPay.amount || 0)}</span></div>`
+          : `<div class="next-payment-done">✓ لا توجد دفعات متبقية</div>`}
+      </div>
+      <div class="card-actions" onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-danger-ghost" onclick="deleteContract('${c.id}')">حذف</button>
+        <button class="btn btn-sm btn-ghost" onclick="openEditModal('${c.id}')">تعديل</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderDetail(id){
+  document.querySelector('.alerts-row').style.display = 'none';
+  document.querySelector('.filters').style.display = 'none';
+
+  const c = contracts.find(x=>x.id===id);
+  if(!c){
+    cardsContainer.innerHTML = `
+      <button class="btn btn-ghost btn-sm" style="margin-bottom:14px;" onclick="navigateToList()">→ رجوع للقائمة</button>
+      <div class="empty">
+        <div class="icon">❓</div>
+        <h3>هذا العقد غير موجود</h3>
+        <p>ربما تم حذفه مسبقًا</p>
+      </div>`;
+    return;
+  }
+
+  const st = getStatus(c);
+  const { net, tax } = computeTax(c.totalValue, c.hasTax, c.taxRate);
+  const endDays = diffDays(todayStr(), new Date(c.endDate));
+  const endNote = st === 'active' && endDays <= settings.endAlertDays && endDays >= 0
+    ? `<span style="color:var(--warning);font-weight:700;"> · ينتهي خلال ${endDays} يوم</span>` : '';
+
+  cardsContainer.innerHTML = `
+    <button class="btn btn-ghost btn-sm" style="margin-bottom:14px;" onclick="navigateToList()">→ رجوع للقائمة</button>
+    <div class="card ${st}">
+      <div class="card-head">
+        <div>
+          <p class="prop-name">${escapeHtml(c.propertyName)}</p>
+          <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
+        </div>
+        <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
+      </div>
+      ${renderTimeline(c)}
+      <div class="value-row">
+        <div class="value-box total"><div class="k">الإجمالي شامل الضريبة</div><div class="v">${fmtMoney(c.totalValue)}</div></div>
+        <div class="value-box"><div class="k">الصافي</div><div class="v">${fmtMoney(net)}</div></div>
+        <div class="value-box"><div class="k">الضريبة</div><div class="v">${fmtMoney(tax)}</div></div>
+      </div>
+      <div class="payments">
+        ${c.payments.map((p,idx)=>`
+          <div class="payment">
+            <div><div class="p-label">${escapeHtml(p.label)}</div><div class="p-date">${fmtDate(p.date)}</div><div class="p-date" style="color:var(--gold);">${fmtMoney(p.amount || 0)}</div></div>
+            <button class="pay-toggle ${payToggleClass(p)}" onclick="togglePayment('${c.id}', ${idx})">
+              ${p.status === 'paid' ? '✓ مدفوعة' : (paymentUrgency(p)==='overdue' ? 'متأخرة' : (paymentUrgency(p)==='due-soon' ? 'مستحقة قريبًا' : 'غير مدفوعة'))}
+            </button>
+          </div>`).join('')}
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-sm btn-danger-ghost" onclick="deleteContract('${c.id}')">حذف</button>
+        <button class="btn btn-sm btn-ghost" onclick="openEditModal('${c.id}')">تعديل</button>
+      </div>
+    </div>`;
+}
+
+async function togglePayment(id, idx){
+  const c = contracts.find(x=>x.id===id);
+  if(!c) return;
+  const newStatus = c.payments[idx].status === 'paid' ? 'unpaid' : 'paid';
+  c.payments[idx].status = newStatus;
+  render();
+  try{ await apiSend(`/api/contracts/${id}/payments/${idx}`, 'PATCH', { status: newStatus }); }
+  catch(e){ alert('تعذر تحديث حالة الدفعة، تحقق من الاتصال بالخادم'); }
+}
+
+async function deleteContract(id){
+  if(!confirm('هل تريد حذف هذا العقد؟')) return;
+  try{
+    await fetch(`/api/contracts/${id}`, { method:'DELETE' });
+    contracts = contracts.filter(c=>c.id!==id);
+    const match = location.hash.match(/^#\/contract\/(.+)$/);
+    if(match && match[1] === id) location.hash = '';
+    render();
+  }catch(e){ alert('تعذر حذف العقد'); }
+}
+
+function openAddModal(){
+  document.getElementById('modalTitle').textContent = 'إضافة عقد جديد';
+  contractForm.reset();
+  document.getElementById('contractId').value = '';
+  document.getElementById('taxRate').value = 15;
+  document.getElementById('hasTaxCheck').checked = true;
+  document.getElementById('paymentFrequency').value = 'custom';
+  document.getElementById('paymentCount').value = 2;
+  currentPayments = [ { date:'', status:'unpaid', amount:0 }, { date:'', status:'unpaid', amount:0 } ];
+  toggleTaxField();
+  renderPaymentsFields();
+  contractModalOverlay.classList.add('open');
+}
+
+function openEditModal(id){
+  const c = contracts.find(x=>x.id===id);
+  if(!c) return;
+  document.getElementById('modalTitle').textContent = 'تعديل العقد';
+  document.getElementById('contractId').value = c.id;
+  document.getElementById('propertyName').value = c.propertyName;
+  document.getElementById('cancelledCheck').checked = !!c.cancelled;
+  document.getElementById('startDate').value = c.startDate;
+  document.getElementById('endDate').value = c.endDate;
+  document.getElementById('totalValue').value = c.totalValue;
+  document.getElementById('hasTaxCheck').checked = c.hasTax;
+  document.getElementById('taxRate').value = c.taxRate;
+  document.getElementById('paymentFrequency').value = c.paymentFrequency || 'custom';
+  document.getElementById('paymentCount').value = (c.payments || []).length || 1;
+  currentPayments = (c.payments || []).map(p => ({ date: p.date, status: p.status, amount: p.amount || 0 }));
+  toggleTaxField();
+  updateTaxPreview();
+  renderPaymentsFields();
+  contractModalOverlay.classList.add('open');
+}
+
+function closeContractModal(){ contractModalOverlay.classList.remove('open'); }
+
+function toggleTaxField(){
+  const has = document.getElementById('hasTaxCheck').checked;
+  document.getElementById('taxRateField').style.display = has ? 'block' : 'none';
+  updateTaxPreview();
+}
+
+function updateTaxPreview(){
+  const total = parseFloat(document.getElementById('totalValue').value) || 0;
+  const hasTax = document.getElementById('hasTaxCheck').checked;
+  const rate = parseFloat(document.getElementById('taxRate').value) || 0;
+  const { net, tax } = computeTax(total, hasTax, rate);
+  document.getElementById('taxPreview').textContent = `الصافي: ${fmtMoney(net)} · الضريبة: ${fmtMoney(tax)}`;
+}
+
+contractForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const id = document.getElementById('contractId').value;
+  const freq = document.getElementById('paymentFrequency').value;
+
+  if(currentPayments.length === 0){
+    alert('أضف دفعة واحدة على الأقل');
+    return;
+  }
+  if(currentPayments.some(p => !p.date)){
+    alert('يرجى تعبئة تاريخ كل دفعة');
+    return;
+  }
+  recalcAmounts();
+
+  const contract = {
+    propertyName: document.getElementById('propertyName').value.trim(),
+    cancelled: document.getElementById('cancelledCheck').checked,
+    startDate: document.getElementById('startDate').value,
+    endDate: document.getElementById('endDate').value,
+    totalValue: parseFloat(document.getElementById('totalValue').value) || 0,
+    hasTax: document.getElementById('hasTaxCheck').checked,
+    taxRate: parseFloat(document.getElementById('taxRate').value) || 0,
+    paymentFrequency: freq,
+    payments: currentPayments.map((p, idx) => ({
+      label: labelForIndex(freq, idx),
+      date: p.date,
+      status: p.status,
+      amount: p.amount || 0
+    }))
+  };
+  try{
+    if(id){
+      contract.id = id;
+      await apiSend(`/api/contracts/${id}`, 'PUT', contract);
+      const idx = contracts.findIndex(c=>c.id===id);
+      contracts[idx] = contract;
+    }else{
+      const data = await apiSend('/api/contracts', 'POST', contract);
+      contract.id = data.id;
+      contracts.push(contract);
+    }
+    closeContractModal();
+    render();
+  }catch(err){
+    alert('تعذر حفظ العقد، تحقق من الاتصال بالخادم');
+  }
+});
+
+document.getElementById('totalValue').addEventListener('input', ()=>{
+  updateTaxPreview();
+  recalcAmounts();
+  renderPaymentsFields();
+});
+document.getElementById('taxRate').addEventListener('input', updateTaxPreview);
+document.getElementById('hasTaxCheck').addEventListener('change', toggleTaxField);
+document.getElementById('addBtn').addEventListener('click', openAddModal);
+
+document.getElementById('paymentFrequency').addEventListener('change', applyPaymentCount);
+document.getElementById('paymentCount').addEventListener('input', applyPaymentCount);
+document.getElementById('startDate').addEventListener('change', ()=>{
+  if(document.getElementById('paymentFrequency').value !== 'custom') applyPaymentCount();
+});
+document.getElementById('cancelModalBtn').addEventListener('click', closeContractModal);
+contractModalOverlay.addEventListener('click', (e)=>{ if(e.target === contractModalOverlay) closeContractModal(); });
+
+document.getElementById('settingsBtn').addEventListener('click', ()=>{
+  document.getElementById('paymentAlertDays').value = settings.paymentAlertDays;
+  document.getElementById('endAlertDays').value = settings.endAlertDays;
+  settingsModalOverlay.classList.add('open');
+});
+document.getElementById('closeSettingsBtn').addEventListener('click', ()=> settingsModalOverlay.classList.remove('open'));
+settingsModalOverlay.addEventListener('click', (e)=>{ if(e.target === settingsModalOverlay) settingsModalOverlay.classList.remove('open'); });
+document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
+  settings.paymentAlertDays = parseInt(document.getElementById('paymentAlertDays').value) || 0;
+  settings.endAlertDays = parseInt(document.getElementById('endAlertDays').value) || 0;
+  try{ await apiSend('/api/settings', 'PUT', settings); }catch(e){}
+  settingsModalOverlay.classList.remove('open');
+  render();
+});
+
+document.getElementById('searchInput').addEventListener('input', render);
+document.getElementById('statusFilter').addEventListener('change', render);
+
+window.addEventListener('hashchange', render);
+
+(async function init(){
+  await loadData();
+  render();
+})();
+</script>
+</body>
+</html>
