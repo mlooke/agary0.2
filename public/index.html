@@ -530,7 +530,7 @@ function renderTimeline(c){
       ${todayInRange ? `<div class="timeline-today" style="right:${elapsedPct}%"></div>` : ''}
       ${markers}
     </div>
-    <div class="timeline-labels"><span>${fmtDate(c.endDate)}</span><span>${fmtDate(c.startDate)}</span></div>
+    <div class="timeline-labels"><span>${fmtDate(c.startDate)}</span><span>${fmtDate(c.endDate)}</span></div>
   </div>`;
 }
 
@@ -567,7 +567,7 @@ function renderProgressBar(c){
       <div class="timeline-fill" style="width:${elapsedPct}%"></div>
       ${todayInRange ? `<div class="timeline-today" style="right:${elapsedPct}%"></div>` : ''}
     </div>
-    <div class="timeline-labels"><span>${fmtDate(c.endDate)}</span><span>${fmtDate(c.startDate)}</span></div>
+    <div class="timeline-labels"><span>${fmtDate(c.startDate)}</span><span>${fmtDate(c.endDate)}</span></div>
   </div>`;
 }
 
