@@ -54,6 +54,8 @@ function ensureColumn(table, column, definition) {
   }
 }
 ensureColumn('contracts', 'tenant_name', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('contracts', 'tenant_phone', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('contracts', 'additional_phone', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('contracts', 'payment_frequency', "TEXT NOT NULL DEFAULT 'custom'");
 ensureColumn('payments', 'amount', 'REAL NOT NULL DEFAULT 0');
 
@@ -73,6 +75,8 @@ function getContractsFull() {
     id: c.id,
     propertyName: c.property_name,
     tenantName: c.tenant_name,
+    tenantPhone: c.tenant_phone,
+    additionalPhone: c.additional_phone,
     cancelled: !!c.cancelled,
     startDate: c.start_date,
     endDate: c.end_date,
@@ -103,8 +107,8 @@ app.post('/api/contracts', (req, res) => {
   const id = newId();
 
   const insertContract = db.prepare(`
-    INSERT INTO contracts (id, property_name, tenant_name, cancelled, start_date, end_date, total_value, has_tax, tax_rate, payment_frequency)
-    VALUES (@id, @propertyName, @tenantName, @cancelled, @startDate, @endDate, @totalValue, @hasTax, @taxRate, @paymentFrequency)
+    INSERT INTO contracts (id, property_name, tenant_name, tenant_phone, additional_phone, cancelled, start_date, end_date, total_value, has_tax, tax_rate, payment_frequency)
+    VALUES (@id, @propertyName, @tenantName, @tenantPhone, @additionalPhone, @cancelled, @startDate, @endDate, @totalValue, @hasTax, @taxRate, @paymentFrequency)
   `);
   const insertPayment = db.prepare(
     'INSERT INTO payments (contract_id, position, label, date, status, amount) VALUES (?, ?, ?, ?, ?, ?)'
@@ -115,6 +119,8 @@ app.post('/api/contracts', (req, res) => {
       id,
       propertyName: c.propertyName,
       tenantName: c.tenantName || '',
+      tenantPhone: c.tenantPhone || '',
+      additionalPhone: c.additionalPhone || '',
       cancelled: c.cancelled ? 1 : 0,
       startDate: c.startDate,
       endDate: c.endDate,
@@ -143,7 +149,8 @@ app.put('/api/contracts/:id', (req, res) => {
   const c = req.body;
 
   const updateContract = db.prepare(`
-    UPDATE contracts SET property_name=@propertyName, tenant_name=@tenantName, cancelled=@cancelled, start_date=@startDate,
+    UPDATE contracts SET property_name=@propertyName, tenant_name=@tenantName, tenant_phone=@tenantPhone,
+      additional_phone=@additionalPhone, cancelled=@cancelled, start_date=@startDate,
       end_date=@endDate, total_value=@totalValue, has_tax=@hasTax, tax_rate=@taxRate,
       payment_frequency=@paymentFrequency WHERE id=@id
   `);
@@ -157,6 +164,8 @@ app.put('/api/contracts/:id', (req, res) => {
       id,
       propertyName: c.propertyName,
       tenantName: c.tenantName || '',
+      tenantPhone: c.tenantPhone || '',
+      additionalPhone: c.additionalPhone || '',
       cancelled: c.cancelled ? 1 : 0,
       startDate: c.startDate,
       endDate: c.endDate,

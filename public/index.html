@@ -273,6 +273,16 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
         <label>اسم المستأجر</label>
         <input type="text" id="tenantName" placeholder="مثال: أحمد محمد">
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>هاتف المستأجر</label>
+          <input type="text" id="tenantPhone" placeholder="مثال: 05XXXXXXXX">
+        </div>
+        <div class="field">
+          <label>هاتف إضافي</label>
+          <input type="text" id="additionalPhone" placeholder="مثال: 05XXXXXXXX">
+        </div>
+      </div>
       <div class="check-row">
         <input type="checkbox" id="cancelledCheck">
         <label for="cancelledCheck">العقد ملغى</label>
@@ -639,6 +649,8 @@ function renderList(){
         <div>
           <p class="prop-name">${escapeHtml(c.propertyName)}</p>
           ${c.tenantName ? `<p class="prop-dates" style="margin-bottom:2px;">المستأجر: ${escapeHtml(c.tenantName)}</p>` : ''}
+          ${c.tenantPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف المستأجر: ${escapeHtml(c.tenantPhone)}</p>` : ''}
+          ${c.additionalPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف إضافي: ${escapeHtml(c.additionalPhone)}</p>` : ''}
           <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
         </div>
         <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
@@ -692,6 +704,8 @@ function renderDetail(id){
         <div>
           <p class="prop-name">${escapeHtml(c.propertyName)}</p>
           ${c.tenantName ? `<p class="prop-dates" style="margin-bottom:2px;">المستأجر: ${escapeHtml(c.tenantName)}</p>` : ''}
+          ${c.tenantPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف المستأجر: ${escapeHtml(c.tenantPhone)}</p>` : ''}
+          ${c.additionalPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف إضافي: ${escapeHtml(c.additionalPhone)}</p>` : ''}
           <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
         </div>
         <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
@@ -744,6 +758,8 @@ function openAddModal(){
   contractForm.reset();
   document.getElementById('contractId').value = '';
   document.getElementById('tenantName').value = '';
+  document.getElementById('tenantPhone').value = '';
+  document.getElementById('additionalPhone').value = '';
   document.getElementById('taxRate').value = 15;
   document.getElementById('hasTaxCheck').checked = true;
   document.getElementById('paymentFrequency').value = 'custom';
@@ -761,6 +777,8 @@ function openEditModal(id){
   document.getElementById('contractId').value = c.id;
   document.getElementById('propertyName').value = c.propertyName;
   document.getElementById('tenantName').value = c.tenantName || '';
+  document.getElementById('tenantPhone').value = c.tenantPhone || '';
+  document.getElementById('additionalPhone').value = c.additionalPhone || '';
   document.getElementById('cancelledCheck').checked = !!c.cancelled;
   document.getElementById('startDate').value = c.startDate;
   document.getElementById('endDate').value = c.endDate;
@@ -810,6 +828,8 @@ contractForm.addEventListener('submit', async (e)=>{
   const contract = {
     propertyName: document.getElementById('propertyName').value.trim(),
     tenantName: document.getElementById('tenantName').value.trim(),
+    tenantPhone: document.getElementById('tenantPhone').value.trim(),
+    additionalPhone: document.getElementById('additionalPhone').value.trim(),
     cancelled: document.getElementById('cancelledCheck').checked,
     startDate: document.getElementById('startDate').value,
     endDate: document.getElementById('endDate').value,
