@@ -2,9 +2,32 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
+const pdfParse = require('pdf-parse');
+const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// --- إعداد مجلد PDF ---
+const pdfDir = path.join(__dirname, 'pdf');
+if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir);
+
+// --- إعداد Multer لرفع ملفات PDF ---
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, pdfDir),
+  filename: (req, file, cb) => {
+    const uniqueName = `contract_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`;
+    cb(null, uniqueName);
+  }
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') cb(null, true);
+    else cb(new Error('يُسمح فقط بملفات PDF'));
+  }
+});
 
 // --- إعداد قاعدة البيانات ---
 const dataDir = path.join(__dirname, 'data');
@@ -67,6 +90,7 @@ seedSetting.run('endAlertDays', '30');
 // --- Middleware ---
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/pdf', express.static(pdfDir));
 
 // --- أدوات مساعدة ---
 function getContractsFull() {
@@ -215,6 +239,126 @@ app.delete('/api/contracts/:id', (req, res) => {
   tx();
   res.json({ ok: true });
 });
+
+// مسح ملف PDF واستخراج بيانات العقد
+app.post('/api/contracts/scan-pdf', upload.single('pdf'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'لم يتم رفع ملف PDF' });
+  try {
+    const dataBuffer = fs.readFileSync(req.file.path);
+    const pdfData = await pdfParse(dataBuffer);
+    const text = pdfData.text || '';
+    const extracted = extractContractData(text);
+    res.json({
+      filename: req.file.filename,
+      filepath: `/pdf/${req.file.filename}`,
+      rawText: text,
+      extracted
+    });
+  } catch (err) {
+    console.error('PDF parse error:', err);
+    res.status(500).json({ error: 'تعذر قراءة ملف PDF' });
+  }
+});
+
+// استخراج بيانات العقد من النص المستخرج من PDF
+function extractContractData(text) {
+  const result = {
+    propertyName: '',
+    tenantName: '',
+    tenantRepresentative: '',
+    tenantPhone: '',
+    additionalPhone: '',
+    startDate: '',
+    endDate: '',
+    totalValue: 0
+  };
+
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+
+    // اسم العقار / العقار / الموضوع
+    if (/^(اسم العقار|العقار|الموضوع|العنوان|عقار)[\s:：\-]*/i.test(line)) {
+      result.propertyName = line.replace(/^(اسم العقار|العقار|الموضوع|العنوان|عقار)[\s:：\-]*/i, '').trim();
+    }
+
+    // اسم المستأجر
+    if (/^(اسم المستأجر|المستأجر|المستأجرون?)[\s:：\-]*/i.test(line)) {
+      result.tenantName = line.replace(/^(اسم المستأجر|المستأجر|المستأجرون?)[\s:：\-]*/i, '').trim();
+    }
+
+    // ممثل المستأجر
+    if (/^(اسم الممثل|ممثل المستأجر|الممثل)[\s:：\-]*/i.test(line)) {
+      result.tenantRepresentative = line.replace(/^(اسم الممثل|ممثل المستأجر|الممثل)[\s:：\-]*/i, '').trim();
+    }
+
+    // هاتف المستأجر
+    if (/^(هاتف المستأجر|جوال المستأجر|التليفون|الجوال|هاتف|موبايل)[\s:：\-]*/i.test(line)) {
+      const phone = line.replace(/^(هاتف المستأجر|جوال المستأجر|التليفون|الجوال|هاتف|موبايل)[\s:：\-]*/i, '').trim();
+      if (!result.tenantPhone) result.tenantPhone = phone;
+      else result.additionalPhone = phone;
+    }
+
+    // هاتف إضافي
+    if (/^(هاتف إضافي|هاتف بديل|رقم بديل)[\s:：\-]*/i.test(line)) {
+      result.additionalPhone = line.replace(/^(هاتف إضافي|هاتف بديل|رقم بديل)[\s:：\-]*/i, '').trim();
+    }
+
+    // تاريخ البداية
+    if (/^(تاريخ البداية|تاريخCommencement|بداية العقد|من تاريخ|من)[\s:：\-]*/i.test(line)) {
+      result.startDate = parseDate(line.replace(/^(تاريخ البداية|تاريخCommencement|بداية العقد|من تاريخ|من)[\s:：\-]*/i, '').trim());
+    }
+
+    // تاريخ النهاية
+    if (/^(تاريخ النهاية|نهاية العقد|إلى تاريخ|إلى|حتى)[\s:：\-]*/i.test(line)) {
+      result.endDate = parseDate(line.replace(/^(تاريخ النهاية|نهاية العقد|إلى تاريخ|إلى|حتى)[\s:：\-]*/i, '').trim());
+    }
+
+    // القيمة / المبلغ / الإيجار
+    if (/^(القيمة الإجمالية|المبلغ الإجمالي|قيمة العقد|الإيجار السنوي|المبلغ|القيمة|إجمالي|إيجار)[\s:：\-]*/i.test(line)) {
+      const num = line.replace(/^(القيمة الإجمالية|المبلغ الإجمالي|قيمة العقد|الإيجار السنوي|المبلغ|القيمة|إجمالي|إيجار)[\s:：\-]*/i, '').trim();
+      const parsed = parseFloat(num.replace(/[^\d.]/g, ''));
+      if (!isNaN(parsed) && parsed > 0) result.totalValue = parsed;
+    }
+  }
+
+  // محاولة استخراج التواريخ إذا لم يتم العثور عليها باليغة واضحة
+  if (!result.startDate || !result.endDate) {
+    const datePattern = /(\d{1,4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,4})/g;
+    const dates = [...text.matchAll(datePattern)].map(m => m[1]);
+    if (dates.length >= 2 && !result.startDate) result.startDate = parseDate(dates[0]);
+    if (dates.length >= 2 && !result.endDate) result.endDate = parseDate(dates[dates.length - 1]);
+  }
+
+  // محاولة استخراج القيمة إذا لم يتم العثور عليها
+  if (!result.totalValue) {
+    const moneyPattern = /(\d[\d,]*\.?\d*)\s*(ريال|ر\.س| SAR|USD|\$)/gi;
+    const moneyMatch = text.match(moneyPattern);
+    if (moneyMatch) {
+      const lastMatch = moneyMatch[moneyMatch.length - 1];
+      const parsed = parseFloat(lastMatch.replace(/[^\d.]/g, ''));
+      if (!isNaN(parsed) && parsed > 0) result.totalValue = parsed;
+    }
+  }
+
+  return result;
+}
+
+function parseDate(str) {
+  if (!str) return '';
+  str = str.trim();
+  // Try DD/MM/YYYY or DD-MM-YYYY
+  let match = str.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+  if (match) return `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`;
+  // Try YYYY/MM/DD
+  match = str.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  if (match) return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+  // Try DD-MM-YY
+  match = str.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})$/);
+  if (match) return `20${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`;
+  return str;
+}
 
 // إعدادات التنبيهات
 app.get('/api/settings', (req, res) => {

@@ -224,6 +224,69 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
   .payments{grid-template-columns:1fr;}
   .field-row{grid-template-columns:1fr;}
 }
+
+.pdf-scan-section{
+  background:linear-gradient(135deg, #f0f7f4 0%, #e8f4ec 100%);
+  border:2px dashed var(--primary);
+  border-radius:14px;
+  padding:18px 20px;
+  margin-bottom:14px;
+  text-align:center;
+}
+.pdf-scan-label{
+  font-family:'Cairo',sans-serif;
+  font-weight:800;
+  font-size:16px;
+  color:var(--primary-dark);
+  margin-bottom:6px;
+}
+.pdf-scan-hint{
+  font-size:12.5px;
+  color:var(--ink-soft);
+  margin:0 0 14px;
+}
+.pdf-upload-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background:var(--primary);
+  color:#fff;
+  border:none;
+  border-radius:10px;
+  padding:10px 22px;
+  font-family:'Tajawal',sans-serif;
+  font-weight:700;
+  font-size:14px;
+  cursor:pointer;
+  transition:background .15s ease, transform .12s ease;
+}
+.pdf-upload-btn:hover{background:var(--primary-dark);}
+.pdf-upload-btn:active{transform:scale(0.97);}
+.pdf-upload-icon{font-size:18px;}
+.pdf-scan-status{
+  margin-top:12px;
+  padding:10px 14px;
+  border-radius:10px;
+  font-size:13px;
+  font-weight:600;
+}
+.pdf-scan-status.loading{
+  background:#fff3cd;
+  color:#856404;
+}
+.pdf-scan-status.success{
+  background:#d4edda;
+  color:#155724;
+}
+.pdf-scan-status.error{
+  background:#f8d7da;
+  color:#721c24;
+}
+.pdf-divider{
+  border:none;
+  border-top:1px solid var(--border);
+  margin:10px 0 16px;
+}
 </style>
 </head>
 <body>
@@ -263,6 +326,17 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
 <div class="modal-overlay" id="contractModalOverlay">
   <div class="modal">
     <h2 id="modalTitle">إضافة عقد جديد</h2>
+    <div id="pdfScanSection" class="pdf-scan-section">
+      <div class="pdf-scan-label">📄 مسح عقد من PDF</div>
+      <p class="pdf-scan-hint">ارفع ملف PDF لاستخراج بيانات العقد تلقائيًا وتعبئة الحقول</p>
+      <label class="pdf-upload-btn" for="pdfFileInput">
+        <span class="pdf-upload-icon">📎</span>
+        <span>اختر ملف PDF</span>
+      </label>
+      <input type="file" id="pdfFileInput" accept=".pdf" style="display:none;">
+      <div id="pdfScanStatus" class="pdf-scan-status" style="display:none;"></div>
+    </div>
+    <hr class="pdf-divider" id="pdfDivider">
     <form id="contractForm">
       <input type="hidden" id="contractId">
       <div class="field">
@@ -774,13 +848,84 @@ function openAddModal(){
   currentPayments = [ { date:'', status:'unpaid', amount:0 }, { date:'', status:'unpaid', amount:0 } ];
   toggleTaxField();
   renderPaymentsFields();
+  document.getElementById('pdfFileInput').value = '';
+  document.getElementById('pdfScanStatus').style.display = 'none';
+  document.getElementById('pdfScanSection').style.display = '';
+  document.getElementById('pdfDivider').style.display = '';
   contractModalOverlay.classList.add('open');
 }
+
+// مسح PDF وتعبئة الحقول تلقائيًا
+document.getElementById('pdfFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('pdfScanStatus');
+  statusEl.style.display = 'block';
+  statusEl.className = 'pdf-scan-status loading';
+  statusEl.textContent = '⏳ جارٍ قراءة ملف PDF واستخراج البيانات...';
+
+  const formData = new FormData();
+  formData.append('pdf', file);
+
+  try {
+    const res = await fetch('/api/contracts/scan-pdf', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'تعذر قراءة الملف');
+
+    const ext = data.extracted;
+    let filledCount = 0;
+
+    if (ext.propertyName) {
+      document.getElementById('propertyName').value = ext.propertyName;
+      filledCount++;
+    }
+    if (ext.tenantName) {
+      document.getElementById('tenantName').value = ext.tenantName;
+      filledCount++;
+    }
+    if (ext.tenantRepresentative) {
+      document.getElementById('tenantRepresentative').value = ext.tenantRepresentative;
+      filledCount++;
+    }
+    if (ext.tenantPhone) {
+      document.getElementById('tenantPhone').value = ext.tenantPhone;
+      filledCount++;
+    }
+    if (ext.additionalPhone) {
+      document.getElementById('additionalPhone').value = ext.additionalPhone;
+      filledCount++;
+    }
+    if (ext.startDate) {
+      document.getElementById('startDate').value = ext.startDate;
+      filledCount++;
+    }
+    if (ext.endDate) {
+      document.getElementById('endDate').value = ext.endDate;
+      filledCount++;
+    }
+    if (ext.totalValue) {
+      document.getElementById('totalValue').value = ext.totalValue;
+      filledCount++;
+    }
+
+    updateTaxPreview();
+    recalcAmounts();
+    applyPaymentCount();
+
+    statusEl.className = 'pdf-scan-status success';
+    statusEl.textContent = `✅ تم استخراج البيانات بنجاح — تم تعبئة ${filledCount} حقل من الملف`;
+  } catch (err) {
+    statusEl.className = 'pdf-scan-status error';
+    statusEl.textContent = `❌ ${err.message || 'تعذر قراءة ملف PDF'}`;
+  }
+});
 
 function openEditModal(id){
   const c = contracts.find(x=>x.id===id);
   if(!c) return;
   document.getElementById('modalTitle').textContent = 'تعديل العقد';
+  document.getElementById('pdfScanSection').style.display = 'none';
+  document.getElementById('pdfDivider').style.display = 'none';
   document.getElementById('contractId').value = c.id;
   document.getElementById('propertyName').value = c.propertyName;
   document.getElementById('tenantName').value = c.tenantName || '';
