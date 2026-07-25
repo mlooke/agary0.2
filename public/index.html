@@ -76,7 +76,10 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
 .alert-card{
   background:var(--surface);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);
   border-inline-start:4px solid var(--gray);display:flex;align-items:center;gap:12px;
+  cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;
 }
+.alert-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.1);}
+.alert-card.active-filter{outline:2px solid var(--primary);outline-offset:2px;transform:translateY(-2px);}
 .alert-card .num{font-family:'Cairo',sans-serif;font-size:26px;font-weight:800;line-height:1;}
 .alert-card .lbl{font-size:12.5px;color:var(--ink-soft);font-weight:500;}
 .alert-card.danger{border-inline-start-color:var(--danger);}
@@ -183,6 +186,34 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
 .pay-toggle.unpaid-normal{background:var(--gray-tint);color:var(--ink-soft);}
 .pay-toggle.unpaid-due{background:var(--warning-tint);color:var(--warning);}
 .pay-toggle.unpaid-overdue{background:var(--danger-tint);color:var(--danger);}
+
+.pay-popup{
+  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:10px;box-shadow:0 8px 30px rgba(0,0,0,0.18);z-index:20;min-width:160px;
+  display:none;
+}
+.pay-popup.show{display:flex;flex-direction:column;gap:6px;}
+.pay-popup-btn{
+  border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;
+  cursor:pointer;font-family:'Tajawal',sans-serif;text-align:right;
+  transition:opacity 0.15s;
+}
+.pay-popup-btn:hover{opacity:0.85;}
+.pay-popup-btn.opt-paid{background:var(--success-tint);color:var(--success);}
+.pay-popup-btn.opt-unpaid{background:var(--gray-tint);color:var(--ink-soft);}
+.pay-popup-btn.opt-confirm{background:var(--primary);color:#fff;margin-top:4px;}
+
+.tenant-info-section{
+  background:var(--surface-alt);border-radius:12px;padding:16px 18px;margin-bottom:14px;
+  border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,0.06);
+}
+.tenant-info-row{
+  display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;
+  background:var(--surface);border-radius:8px;border:1px solid var(--border);
+}
+.tenant-info-label{font-size:14px;color:var(--ink-soft);font-weight:600;min-width:110px;}
+.tenant-info-value{font-size:16px;font-weight:800;color:var(--ink);}
 
 .card-actions{display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px;}
 
@@ -304,9 +335,9 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
   </div>
 
   <div class="alerts-row">
-    <div class="alert-card danger" id="alertOverdue"><div><div class="num">0</div><div class="lbl">دفعات متأخرة</div></div></div>
-    <div class="alert-card warning" id="alertDueSoon"><div><div class="num">0</div><div class="lbl">دفعات مستحقة قريبًا</div></div></div>
-    <div class="alert-card info" id="alertEnding"><div><div class="num">0</div><div class="lbl">عقود تقترب من الانتهاء</div></div></div>
+    <div class="alert-card danger" id="alertOverdue" onclick="toggleAlertFilter('overdue')"><div><div class="num">0</div><div class="lbl">دفعات متأخرة</div></div></div>
+    <div class="alert-card warning" id="alertDueSoon" onclick="toggleAlertFilter('due-soon')"><div><div class="num">0</div><div class="lbl">دفعات مستحقة قريبًا</div></div></div>
+    <div class="alert-card info" id="alertEnding" onclick="toggleAlertFilter('ending')"><div><div class="num">0</div><div class="lbl">عقود تقترب من الانتهاء</div></div></div>
   </div>
 
   <div class="filters">
@@ -662,6 +693,22 @@ function renderProgressBar(c){
 function navigateToList(){ location.hash = ''; render(); }
 function navigateToContract(id){ location.hash = '#/contract/' + id; render(); }
 
+let activeAlertFilter = null;
+
+function toggleAlertFilter(type){
+  if(activeAlertFilter === type){
+    activeAlertFilter = null;
+  } else {
+    activeAlertFilter = type;
+  }
+  document.querySelectorAll('.alert-card').forEach(el=>el.classList.remove('active-filter'));
+  if(activeAlertFilter){
+    const map = { 'overdue':'alertOverdue', 'due-soon':'alertDueSoon', 'ending':'alertEnding' };
+    document.getElementById(map[activeAlertFilter]).classList.add('active-filter');
+  }
+  renderList();
+}
+
 function render(){
   const match = location.hash.match(/^#\/contract\/(.+)$/);
   if(match){ renderDetail(match[1]); }
@@ -695,7 +742,21 @@ function renderList(){
   let filtered = contracts.filter(c=>{
     const matchesSearch = !search || c.propertyName.toLowerCase().includes(search);
     const matchesStatus = statusFilterVal === 'all' || getStatus(c) === statusFilterVal;
-    return matchesSearch && matchesStatus;
+    if(!matchesSearch || !matchesStatus) return false;
+    if(!activeAlertFilter) return true;
+    if(activeAlertFilter === 'overdue'){
+      return c.payments.some(p=>paymentUrgency(p)==='overdue');
+    }
+    if(activeAlertFilter === 'due-soon'){
+      return c.payments.some(p=>paymentUrgency(p)==='due-soon');
+    }
+    if(activeAlertFilter === 'ending'){
+      const st = getStatus(c);
+      if(st !== 'active') return false;
+      const dd = diffDays(todayStr(), new Date(c.endDate));
+      return dd >= 0 && dd <= settings.endAlertDays;
+    }
+    return true;
   });
 
   if(filtered.length === 0){
@@ -729,12 +790,7 @@ function renderList(){
         </div>
         <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
       </div>
-      ${renderProgressBar(c)}
-      <div class="value-row">
-        <div class="value-box total"><div class="k">الإجمالي شامل الضريبة</div><div class="v">${fmtMoney(c.totalValue)}</div></div>
-        <div class="value-box"><div class="k">الصافي</div><div class="v">${fmtMoney(net)}</div></div>
-        <div class="value-box"><div class="k">الضريبة</div><div class="v">${fmtMoney(tax)}</div></div>
-      </div>
+      ${renderTimeline(c)}
       <div class="next-payment-row">
         ${overdue ? `<span class="overdue-flag">⚠ يوجد دفعة متأخرة</span>` : '<span></span>'}
         ${nextPay
@@ -777,9 +833,6 @@ function renderDetail(id){
       <div class="card-head">
         <div>
           <p class="prop-name">${escapeHtml(c.propertyName)}</p>
-          ${c.tenantName ? `<p class="prop-dates" style="margin-bottom:2px;">المستأجر: ${escapeHtml(c.tenantName)}</p>` : ''}
-          ${c.tenantPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف المستأجر: ${escapeHtml(c.tenantPhone)}</p>` : ''}
-          ${c.tenantRepresentative ? `<p class="prop-dates" style="margin-bottom:2px;">ممثل المستأجر: ${escapeHtml(c.tenantRepresentative)}</p>` : ''}
           <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
         </div>
         <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
@@ -792,12 +845,22 @@ function renderDetail(id){
       </div>
       <div class="payments">
         ${c.payments.map((p,idx)=>`
-          <div class="payment">
+          <div class="payment" style="position:relative;">
             <div><div class="p-label">${escapeHtml(p.label)}</div><div class="p-date">${fmtDate(p.date)}</div><div class="p-date" style="color:var(--gold);">${fmtMoney(p.amount || 0)}</div></div>
-            <button class="pay-toggle ${payToggleClass(p)}" onclick="togglePayment('${c.id}', ${idx})">
+            <button class="pay-toggle ${payToggleClass(p)}" onclick="showPaymentStatusMenu('${c.id}', ${idx}, this)">
               ${p.status === 'paid' ? '✓ مدفوعة' : (paymentUrgency(p)==='overdue' ? 'متأخرة' : (paymentUrgency(p)==='due-soon' ? 'مستحقة قريبًا' : 'غير مدفوعة'))}
             </button>
+            <div class="pay-popup" id="payPopup-${c.id}-${idx}">
+              <button class="pay-popup-btn opt-paid" onclick="selectPaymentStatus('${c.id}', ${idx}, 'paid')">${p.status==='paid'?'✓ ':''}مدفوعة</button>
+              <button class="pay-popup-btn opt-unpaid" onclick="selectPaymentStatus('${c.id}', ${idx}, 'unpaid')">${p.status==='unpaid'?'✓ ':''}غير مدفوعة</button>
+              <button class="pay-popup-btn opt-confirm" onclick="confirmPaymentStatus('${c.id}', ${idx})">تم</button>
+            </div>
           </div>`).join('')}
+      </div>
+      <div class="tenant-info-section">
+        ${c.tenantName ? `<div class="tenant-info-row"><span class="tenant-info-label">المستأجر:</span><span class="tenant-info-value">${escapeHtml(c.tenantName)}</span></div>` : ''}
+        ${c.tenantPhone ? `<div class="tenant-info-row"><span class="tenant-info-label">هاتف المستأجر:</span><span class="tenant-info-value">${escapeHtml(c.tenantPhone)}</span></div>` : ''}
+        ${c.tenantRepresentative ? `<div class="tenant-info-row"><span class="tenant-info-label">ممثل المستأجر:</span><span class="tenant-info-value">${escapeHtml(c.tenantRepresentative)}</span></div>` : ''}
       </div>
       <div class="card-actions">
         <button class="btn btn-sm btn-danger-ghost" onclick="deleteContract('${c.id}')">حذف</button>
@@ -806,15 +869,49 @@ function renderDetail(id){
     </div>`;
 }
 
-async function togglePayment(id, idx){
+let _selectedPayStatus = {};
+
+function showPaymentStatusMenu(id, idx, btn){
+  document.querySelectorAll('.pay-popup.show').forEach(p=>p.classList.remove('show'));
+  const popup = document.getElementById('payPopup-'+id+'-'+idx);
+  if(!popup) return;
+  _selectedPayStatus[id+'-'+idx] = contracts.find(x=>x.id===id).payments[idx].status;
+  popup.querySelectorAll('.pay-popup-btn').forEach(b=>{
+    b.style.outline = 'none';
+  });
+  const current = _selectedPayStatus[id+'-'+idx];
+  const highlight = popup.querySelector(current==='paid' ? '.opt-paid' : '.opt-unpaid');
+  if(highlight) highlight.style.outline = '2px solid var(--primary)';
+  popup.classList.add('show');
+}
+
+function selectPaymentStatus(id, idx, status){
+  _selectedPayStatus[id+'-'+idx] = status;
+  const popup = document.getElementById('payPopup-'+id+'-'+idx);
+  if(!popup) return;
+  popup.querySelectorAll('.pay-popup-btn').forEach(b=>b.style.outline='none');
+  const btn = popup.querySelector(status==='paid' ? '.opt-paid' : '.opt-unpaid');
+  if(btn) btn.style.outline = '2px solid var(--primary)';
+}
+
+async function confirmPaymentStatus(id, idx){
+  const key = id+'-'+idx;
+  const newStatus = _selectedPayStatus[key];
+  if(!newStatus) return;
   const c = contracts.find(x=>x.id===id);
   if(!c) return;
-  const newStatus = c.payments[idx].status === 'paid' ? 'unpaid' : 'paid';
   c.payments[idx].status = newStatus;
+  document.querySelectorAll('.pay-popup.show').forEach(p=>p.classList.remove('show'));
   render();
   try{ await apiSend(`/api/contracts/${id}/payments/${idx}`, 'PATCH', { status: newStatus }); }
   catch(e){ alert('تعذر تحديث حالة الدفعة، تحقق من الاتصال بالخادم'); }
 }
+
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.pay-toggle') && !e.target.closest('.pay-popup')){
+    document.querySelectorAll('.pay-popup.show').forEach(p=>p.classList.remove('show'));
+  }
+});
 
 async function deleteContract(id){
   if(!confirm('هل تريد حذف هذا العقد؟')) return;
@@ -1043,7 +1140,78 @@ window.addEventListener('hashchange', render);
 (async function init(){
   await loadData();
   render();
+  requestNotificationPermission();
+  checkAndNotify();
+  setInterval(checkAndNotify, 60 * 60 * 1000);
 })();
+
+function requestNotificationPermission(){
+  if('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
+}
+
+let _lastNotified = {};
+
+function checkAndNotify(){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const overdueContracts = [];
+  const dueSoonContracts = [];
+  const endingContracts = [];
+
+  contracts.forEach(c=>{
+    const st = getStatus(c);
+    c.payments.forEach(p=>{
+      const u = paymentUrgency(p);
+      if(u === 'overdue'){
+        if(!_lastNotified['overdue-'+c.id+'-'+p.label]){
+          overdueContracts.push({ name:c.propertyName, label:p.label, date:p.date, amount:p.amount });
+          _lastNotified['overdue-'+c.id+'-'+p.label] = true;
+        }
+      }
+      if(u === 'due-soon'){
+        if(!_lastNotified['due-soon-'+c.id+'-'+p.label]){
+          dueSoonContracts.push({ name:c.propertyName, label:p.label, date:p.date, amount:p.amount });
+          _lastNotified['due-soon-'+c.id+'-'+p.label] = true;
+        }
+      }
+    });
+    if(st === 'active'){
+      const dd = diffDays(todayStr(), new Date(c.endDate));
+      if(dd >= 0 && dd <= settings.endAlertDays){
+        if(!_lastNotified['ending-'+c.id]){
+          endingContracts.push({ name:c.propertyName, endDate:c.endDate, days:dd });
+          _lastNotified['ending-'+c.id] = true;
+        }
+      }
+    }
+  });
+
+  if(overdueContracts.length > 0){
+    const detail = overdueContracts.map(c=>`${c.name} - ${c.label}`).join('\n');
+    new Notification('⚠ دفعات متأخرة', {
+      body: `${overdueContracts.length} دفعات متأخرة:\n${detail}`,
+      icon: '⚠️'
+    });
+  }
+
+  if(dueSoonContracts.length > 0){
+    const detail = dueSoonContracts.map(c=>`${c.name} - ${c.label}`).join('\n');
+    new Notification('⏰ دفعات مستحقة قريبًا', {
+      body: `${dueSoonContracts.length} دفعات قريبة:\n${detail}`,
+      icon: '⏰'
+    });
+  }
+
+  if(endingContracts.length > 0){
+    const detail = endingContracts.map(c=>`${c.name} - ينتهي خلال ${c.days} يوم`).join('\n');
+    new Notification('📋 عقود تقترب من الانتهاء', {
+      body: `${endingContracts.length} عقود تنتهي قريبًا:\n${detail}`,
+      icon: '📋'
+    });
+  }
+}
 </script>
 </body>
 </html>
