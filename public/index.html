@@ -1137,94 +1137,10 @@ document.getElementById('statusFilter').addEventListener('change', render);
 
 window.addEventListener('hashchange', render);
 
-let _swRegistration = null;
-
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/sw.js').then(reg=>{
-    _swRegistration = reg;
-  }).catch(()=>{});
-}
-
 (async function init(){
   await loadData();
   render();
-  requestNotificationPermission();
-  checkAndNotify();
-  setInterval(checkAndNotify, 60 * 60 * 1000);
 })();
-
-function requestNotificationPermission(){
-  if('Notification' in window && Notification.permission === 'default'){
-    Notification.requestPermission();
-  }
-}
-
-function sendNotification(title, body, tag){
-  if(!('Notification' in window) || Notification.permission !== 'granted') return;
-  if(_swRegistration && _swRegistration.active){
-    _swRegistration.active.postMessage({
-      type: 'SHOW_NOTIFICATION',
-      title: title,
-      body: body,
-      tag: tag
-    });
-  } else {
-    new Notification(title, { body: body });
-  }
-}
-
-let _lastNotified = {};
-
-function checkAndNotify(){
-  if(!('Notification' in window) || Notification.permission !== 'granted') return;
-
-  const overdueContracts = [];
-  const dueSoonContracts = [];
-  const endingContracts = [];
-
-  contracts.forEach(c=>{
-    const st = getStatus(c);
-    c.payments.forEach(p=>{
-      const u = paymentUrgency(p);
-      if(u === 'overdue'){
-        if(!_lastNotified['overdue-'+c.id+'-'+p.label]){
-          overdueContracts.push({ name:c.propertyName, label:p.label, date:p.date, amount:p.amount });
-          _lastNotified['overdue-'+c.id+'-'+p.label] = true;
-        }
-      }
-      if(u === 'due-soon'){
-        if(!_lastNotified['due-soon-'+c.id+'-'+p.label]){
-          dueSoonContracts.push({ name:c.propertyName, label:p.label, date:p.date, amount:p.amount });
-          _lastNotified['due-soon-'+c.id+'-'+p.label] = true;
-        }
-      }
-    });
-    if(st === 'active'){
-      const dd = diffDays(todayStr(), new Date(c.endDate));
-      if(dd >= 0 && dd <= settings.endAlertDays){
-        if(!_lastNotified['ending-'+c.id]){
-          endingContracts.push({ name:c.propertyName, endDate:c.endDate, days:dd });
-          _lastNotified['ending-'+c.id] = true;
-        }
-      }
-    }
-  });
-
-  if(overdueContracts.length > 0){
-    const detail = overdueContracts.map(c=>`${c.name} - ${c.label}`).join('\n');
-    sendNotification('⚠ دفعات متأخرة', `${overdueContracts.length} دفعات متأخرة:\n${detail}`, 'overdue');
-  }
-
-  if(dueSoonContracts.length > 0){
-    const detail = dueSoonContracts.map(c=>`${c.name} - ${c.label}`).join('\n');
-    sendNotification('⏰ دفعات مستحقة قريبًا', `${dueSoonContracts.length} دفعات قريبة:\n${detail}`, 'due-soon');
-  }
-
-  if(endingContracts.length > 0){
-    const detail = endingContracts.map(c=>`${c.name} - ينتهي خلال ${c.days} يوم`).join('\n');
-    sendNotification('📋 عقود تقترب من الانتهاء', `${endingContracts.length} عقود تنتهي قريبًا:\n${detail}`, 'ending');
-  }
-}
 </script>
 </body>
 </html>
