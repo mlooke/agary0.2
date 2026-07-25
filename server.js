@@ -78,7 +78,6 @@ function ensureColumn(table, column, definition) {
 }
 ensureColumn('contracts', 'tenant_name', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('contracts', 'tenant_phone', "TEXT NOT NULL DEFAULT ''");
-ensureColumn('contracts', 'additional_phone', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('contracts', 'tenant_representative', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('contracts', 'payment_frequency', "TEXT NOT NULL DEFAULT 'custom'");
 ensureColumn('payments', 'amount', 'REAL NOT NULL DEFAULT 0');
@@ -101,7 +100,6 @@ function getContractsFull() {
     propertyName: c.property_name,
     tenantName: c.tenant_name,
     tenantPhone: c.tenant_phone,
-    additionalPhone: c.additional_phone,
     tenantRepresentative: c.tenant_representative,
     cancelled: !!c.cancelled,
     startDate: c.start_date,
@@ -133,8 +131,8 @@ app.post('/api/contracts', (req, res) => {
   const id = newId();
 
   const insertContract = db.prepare(`
-    INSERT INTO contracts (id, property_name, tenant_name, tenant_phone, additional_phone, tenant_representative, cancelled, start_date, end_date, total_value, has_tax, tax_rate, payment_frequency)
-    VALUES (@id, @propertyName, @tenantName, @tenantPhone, @additionalPhone, @tenantRepresentative, @cancelled, @startDate, @endDate, @totalValue, @hasTax, @taxRate, @paymentFrequency)
+    INSERT INTO contracts (id, property_name, tenant_name, tenant_phone, tenant_representative, cancelled, start_date, end_date, total_value, has_tax, tax_rate, payment_frequency)
+    VALUES (@id, @propertyName, @tenantName, @tenantPhone, @tenantRepresentative, @cancelled, @startDate, @endDate, @totalValue, @hasTax, @taxRate, @paymentFrequency)
   `);
   const insertPayment = db.prepare(
     'INSERT INTO payments (contract_id, position, label, date, status, amount) VALUES (?, ?, ?, ?, ?, ?)'
@@ -146,7 +144,6 @@ app.post('/api/contracts', (req, res) => {
       propertyName: c.propertyName,
       tenantName: c.tenantName || '',
       tenantPhone: c.tenantPhone || '',
-      additionalPhone: c.additionalPhone || '',
       tenantRepresentative: c.tenantRepresentative || '',
       cancelled: c.cancelled ? 1 : 0,
       startDate: c.startDate,
@@ -177,7 +174,7 @@ app.put('/api/contracts/:id', (req, res) => {
 
   const updateContract = db.prepare(`
     UPDATE contracts SET property_name=@propertyName, tenant_name=@tenantName, tenant_phone=@tenantPhone,
-      additional_phone=@additionalPhone, tenant_representative=@tenantRepresentative, cancelled=@cancelled, start_date=@startDate,
+      tenant_representative=@tenantRepresentative, cancelled=@cancelled, start_date=@startDate,
       end_date=@endDate, total_value=@totalValue, has_tax=@hasTax, tax_rate=@taxRate,
       payment_frequency=@paymentFrequency WHERE id=@id
   `);
@@ -192,7 +189,6 @@ app.put('/api/contracts/:id', (req, res) => {
       propertyName: c.propertyName,
       tenantName: c.tenantName || '',
       tenantPhone: c.tenantPhone || '',
-      additionalPhone: c.additionalPhone || '',
       tenantRepresentative: c.tenantRepresentative || '',
       cancelled: c.cancelled ? 1 : 0,
       startDate: c.startDate,
@@ -267,7 +263,6 @@ function extractContractData(text) {
     tenantName: '',
     tenantRepresentative: '',
     tenantPhone: '',
-    additionalPhone: '',
     startDate: '',
     endDate: '',
     totalValue: 0
@@ -297,12 +292,6 @@ function extractContractData(text) {
     if (/^(هاتف المستأجر|جوال المستأجر|التليفون|الجوال|هاتف|موبايل)[\s:：\-]*/i.test(line)) {
       const phone = line.replace(/^(هاتف المستأجر|جوال المستأجر|التليفون|الجوال|هاتف|موبايل)[\s:：\-]*/i, '').trim();
       if (!result.tenantPhone) result.tenantPhone = phone;
-      else result.additionalPhone = phone;
-    }
-
-    // هاتف إضافي
-    if (/^(هاتف إضافي|هاتف بديل|رقم بديل)[\s:：\-]*/i.test(line)) {
-      result.additionalPhone = line.replace(/^(هاتف إضافي|هاتف بديل|رقم بديل)[\s:：\-]*/i, '').trim();
     }
 
     // تاريخ البداية

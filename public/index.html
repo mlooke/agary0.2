@@ -356,10 +356,6 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
           <label>هاتف المستأجر</label>
           <input type="text" id="tenantPhone" placeholder="مثال: 05XXXXXXXX">
         </div>
-        <div class="field">
-          <label>هاتف إضافي</label>
-          <input type="text" id="additionalPhone" placeholder="مثال: 05XXXXXXXX">
-        </div>
       </div>
       <div class="check-row">
         <input type="checkbox" id="cancelledCheck">
@@ -728,7 +724,6 @@ function renderList(){
           <p class="prop-name">${escapeHtml(c.propertyName)}</p>
           ${c.tenantName ? `<p class="prop-dates" style="margin-bottom:2px;">المستأجر: ${escapeHtml(c.tenantName)}</p>` : ''}
           ${c.tenantPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف المستأجر: ${escapeHtml(c.tenantPhone)}</p>` : ''}
-          ${c.additionalPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف إضافي: ${escapeHtml(c.additionalPhone)}</p>` : ''}
           ${c.tenantRepresentative ? `<p class="prop-dates" style="margin-bottom:2px;">ممثل المستأجر: ${escapeHtml(c.tenantRepresentative)}</p>` : ''}
           <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
         </div>
@@ -784,7 +779,6 @@ function renderDetail(id){
           <p class="prop-name">${escapeHtml(c.propertyName)}</p>
           ${c.tenantName ? `<p class="prop-dates" style="margin-bottom:2px;">المستأجر: ${escapeHtml(c.tenantName)}</p>` : ''}
           ${c.tenantPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف المستأجر: ${escapeHtml(c.tenantPhone)}</p>` : ''}
-          ${c.additionalPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف إضافي: ${escapeHtml(c.additionalPhone)}</p>` : ''}
           ${c.tenantRepresentative ? `<p class="prop-dates" style="margin-bottom:2px;">ممثل المستأجر: ${escapeHtml(c.tenantRepresentative)}</p>` : ''}
           <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
         </div>
@@ -839,7 +833,6 @@ function openAddModal(){
   document.getElementById('contractId').value = '';
   document.getElementById('tenantName').value = '';
   document.getElementById('tenantPhone').value = '';
-  document.getElementById('additionalPhone').value = '';
   document.getElementById('tenantRepresentative').value = '';
   document.getElementById('taxRate').value = 15;
   document.getElementById('hasTaxCheck').checked = true;
@@ -891,10 +884,6 @@ document.getElementById('pdfFileInput').addEventListener('change', async (e) => 
       document.getElementById('tenantPhone').value = ext.tenantPhone;
       filledCount++;
     }
-    if (ext.additionalPhone) {
-      document.getElementById('additionalPhone').value = ext.additionalPhone;
-      filledCount++;
-    }
     if (ext.startDate) {
       document.getElementById('startDate').value = ext.startDate;
       filledCount++;
@@ -930,7 +919,6 @@ function openEditModal(id){
   document.getElementById('propertyName').value = c.propertyName;
   document.getElementById('tenantName').value = c.tenantName || '';
   document.getElementById('tenantPhone').value = c.tenantPhone || '';
-  document.getElementById('additionalPhone').value = c.additionalPhone || '';
   document.getElementById('tenantRepresentative').value = c.tenantRepresentative || '';
   document.getElementById('cancelledCheck').checked = !!c.cancelled;
   document.getElementById('startDate').value = c.startDate;
@@ -982,7 +970,6 @@ contractForm.addEventListener('submit', async (e)=>{
     propertyName: document.getElementById('propertyName').value.trim(),
     tenantName: document.getElementById('tenantName').value.trim(),
     tenantPhone: document.getElementById('tenantPhone').value.trim(),
-    additionalPhone: document.getElementById('additionalPhone').value.trim(),
     tenantRepresentative: document.getElementById('tenantRepresentative').value.trim(),
     cancelled: document.getElementById('cancelledCheck').checked,
     startDate: document.getElementById('startDate').value,
