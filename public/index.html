@@ -1137,6 +1137,14 @@ document.getElementById('statusFilter').addEventListener('change', render);
 
 window.addEventListener('hashchange', render);
 
+let _swRegistration = null;
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js').then(reg=>{
+    _swRegistration = reg;
+  }).catch(()=>{});
+}
+
 (async function init(){
   await loadData();
   render();
@@ -1148,6 +1156,20 @@ window.addEventListener('hashchange', render);
 function requestNotificationPermission(){
   if('Notification' in window && Notification.permission === 'default'){
     Notification.requestPermission();
+  }
+}
+
+function sendNotification(title, body, tag){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  if(_swRegistration && _swRegistration.active){
+    _swRegistration.active.postMessage({
+      type: 'SHOW_NOTIFICATION',
+      title: title,
+      body: body,
+      tag: tag
+    });
+  } else {
+    new Notification(title, { body: body });
   }
 }
 
@@ -1190,26 +1212,17 @@ function checkAndNotify(){
 
   if(overdueContracts.length > 0){
     const detail = overdueContracts.map(c=>`${c.name} - ${c.label}`).join('\n');
-    new Notification('⚠ دفعات متأخرة', {
-      body: `${overdueContracts.length} دفعات متأخرة:\n${detail}`,
-      icon: '⚠️'
-    });
+    sendNotification('⚠ دفعات متأخرة', `${overdueContracts.length} دفعات متأخرة:\n${detail}`, 'overdue');
   }
 
   if(dueSoonContracts.length > 0){
     const detail = dueSoonContracts.map(c=>`${c.name} - ${c.label}`).join('\n');
-    new Notification('⏰ دفعات مستحقة قريبًا', {
-      body: `${dueSoonContracts.length} دفعات قريبة:\n${detail}`,
-      icon: '⏰'
-    });
+    sendNotification('⏰ دفعات مستحقة قريبًا', `${dueSoonContracts.length} دفعات قريبة:\n${detail}`, 'due-soon');
   }
 
   if(endingContracts.length > 0){
     const detail = endingContracts.map(c=>`${c.name} - ينتهي خلال ${c.days} يوم`).join('\n');
-    new Notification('📋 عقود تقترب من الانتهاء', {
-      body: `${endingContracts.length} عقود تنتهي قريبًا:\n${detail}`,
-      icon: '📋'
-    });
+    sendNotification('📋 عقود تقترب من الانتهاء', `${endingContracts.length} عقود تنتهي قريبًا:\n${detail}`, 'ending');
   }
 }
 </script>
