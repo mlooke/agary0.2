@@ -932,7 +932,7 @@ function openAddModal(){
   document.getElementById('tenantPhone').value = '';
   document.getElementById('tenantRepresentative').value = '';
   document.getElementById('taxRate').value = 15;
-  document.getElementById('hasTaxCheck').checked = true;
+  document.getElementById('hasTaxCheck').checked = false;
   document.getElementById('paymentFrequency').value = 'custom';
   document.getElementById('paymentCount').value = 2;
   currentPayments = [ { date:'', status:'unpaid', amount:0 }, { date:'', status:'unpaid', amount:0 } ];
@@ -992,6 +992,23 @@ document.getElementById('pdfFileInput').addEventListener('change', async (e) => 
     if (ext.totalValue) {
       document.getElementById('totalValue').value = ext.totalValue;
       filledCount++;
+    }
+    if (ext.hasTax !== undefined) {
+      document.getElementById('hasTaxCheck').checked = ext.hasTax;
+      filledCount++;
+    }
+    if (ext.taxRate) {
+      document.getElementById('taxRate').value = ext.taxRate;
+    }
+    if (ext.payments && ext.payments.length > 0) {
+      document.getElementById('paymentFrequency').value = 'custom';
+      currentPayments = ext.payments.map(p => ({
+        date: p.date || '',
+        status: p.status || 'unpaid',
+        amount: p.amount || 0
+      }));
+      document.getElementById('paymentCount').value = currentPayments.length;
+      filledCount += currentPayments.length;
     }
 
     updateTaxPreview();
@@ -1096,7 +1113,19 @@ contractForm.addEventListener('submit', async (e)=>{
     closeContractModal();
     render();
   }catch(err){
-    alert('تعذر حفظ العقد، تحقق من الاتصال بالخادم');
+    if (err.message && err.message.includes('موجود مسبقاً')) {
+      if (!confirm('⚠️ هذا العقد موجود مسبقاً!\nهل تريد إضافته مع التكرار؟')) return;
+      try {
+        const data2 = await apiSend('/api/contracts/force', 'POST', contract);
+        contract.id = data2.id;
+        contracts.push(contract);
+        closeContractModal();
+        render();
+        return;
+      } catch(e) { alert('تعذر الحفظ'); }
+    } else {
+      alert('تعذر حفظ العقد، تحقق من الاتصال بالخادم');
+    }
   }
 });
 

@@ -4,9 +4,11 @@ const fs = require('fs');
 const Database = require('better-sqlite3');
 const pdfParse = require('pdf-parse');
 const multer = require('multer');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DEEPSEEK_API_KEY = 'sk-a9e3ac1277034e26922d521ae1315da2';
 
 // --- إعداد مجلد PDF ---
 const pdfDir = path.join(__dirname, 'pdf');
@@ -125,11 +127,7 @@ app.get('/api/contracts', (req, res) => {
   res.json(getContractsFull());
 });
 
-// إضافة عقد جديد
-app.post('/api/contracts', (req, res) => {
-  const c = req.body;
-  const id = newId();
-
+function insertContractFn(c, id) {
   const insertContract = db.prepare(`
     INSERT INTO contracts (id, property_name, tenant_name, tenant_phone, tenant_representative, cancelled, start_date, end_date, total_value, has_tax, tax_rate, payment_frequency)
     VALUES (@id, @propertyName, @tenantName, @tenantPhone, @tenantRepresentative, @cancelled, @startDate, @endDate, @totalValue, @hasTax, @taxRate, @paymentFrequency)
@@ -137,32 +135,51 @@ app.post('/api/contracts', (req, res) => {
   const insertPayment = db.prepare(
     'INSERT INTO payments (contract_id, position, label, date, status, amount) VALUES (?, ?, ?, ?, ?, ?)'
   );
-
   const tx = db.transaction(() => {
     insertContract.run({
-      id,
-      propertyName: c.propertyName,
-      tenantName: c.tenantName || '',
-      tenantPhone: c.tenantPhone || '',
-      tenantRepresentative: c.tenantRepresentative || '',
-      cancelled: c.cancelled ? 1 : 0,
-      startDate: c.startDate,
-      endDate: c.endDate,
-      totalValue: c.totalValue,
-      hasTax: c.hasTax ? 1 : 0,
-      taxRate: c.taxRate,
+      id, propertyName: c.propertyName, tenantName: c.tenantName || '',
+      tenantPhone: c.tenantPhone || '', tenantRepresentative: c.tenantRepresentative || '',
+      cancelled: c.cancelled ? 1 : 0, startDate: c.startDate, endDate: c.endDate,
+      totalValue: c.totalValue, hasTax: c.hasTax ? 1 : 0, taxRate: c.taxRate,
       paymentFrequency: c.paymentFrequency || 'custom',
     });
     (c.payments || []).forEach((p, idx) => {
       insertPayment.run(id, idx, p.label, p.date, p.status, p.amount || 0);
     });
   });
+  tx();
+}
+
+// إضافة عقد جديد
+app.post('/api/contracts', (req, res) => {
+  const c = req.body;
+  const id = newId();
+
+  const duplicate = db.prepare(`
+    SELECT id FROM contracts
+    WHERE property_name = ? AND tenant_name = ? AND start_date = ? AND end_date = ? AND total_value = ?
+  `).get(c.propertyName, c.tenantName || '', c.startDate, c.endDate, c.totalValue);
+
+  if (duplicate) {
+    return res.status(409).json({ error: 'هذا العقد موجود مسبقاً', duplicateId: duplicate.id });
+  }
 
   try {
-    tx();
+    insertContractFn(c, id);
     res.status(201).json({ id });
   } catch (err) {
     console.error(err);
+    res.status(400).json({ error: 'تعذر إنشاء العقد' });
+  }
+});
+
+// إضافة عقد جديد بدون فحص تكرار
+app.post('/api/contracts/force', (req, res) => {
+  try {
+    const id = newId();
+    insertContractFn(req.body, id);
+    res.status(201).json({ id });
+  } catch (err) {
     res.status(400).json({ error: 'تعذر إنشاء العقد' });
   }
 });
@@ -236,19 +253,34 @@ app.delete('/api/contracts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// مسح ملف PDF واستخراج بيانات العقد
+// مسح ملف PDF واستخراج بيانات العقد عبر DeepSeek AI
 app.post('/api/contracts/scan-pdf', upload.single('pdf'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'لم يتم رفع ملف PDF' });
   try {
     const dataBuffer = fs.readFileSync(req.file.path);
     const pdfData = await pdfParse(dataBuffer);
     const text = pdfData.text || '';
+
+    // محاولة الاستخراج بالذكاء الاصطناعي
+    try {
+      const extracted = await callDeepSeek(text);
+      return res.json({
+        filename: req.file.filename,
+        filepath: `/pdf/${req.file.filename}`,
+        extracted,
+        source: 'ai'
+      });
+    } catch (aiErr) {
+      console.log('AI فشل، استخدام الاستخراج المحلي:', aiErr.message);
+    }
+
+    // fallback محلي
     const extracted = extractContractData(text);
     res.json({
       filename: req.file.filename,
       filepath: `/pdf/${req.file.filename}`,
-      rawText: text,
-      extracted
+      extracted,
+      source: 'local'
     });
   } catch (err) {
     console.error('PDF parse error:', err);
@@ -290,7 +322,10 @@ function extractContractData(text) {
 
     // هاتف المستأجر
     if (/^(هاتف المستأجر|جوال المستأجر|التليفون|الجوال|هاتف|موبايل)[\s:：\-]*/i.test(line)) {
-      const phone = line.replace(/^(هاتف المستأجر|جوال المستأجر|التليفون|الجوال|هاتف|موبايل)[\s:：\-]*/i, '').trim();
+      let phone = line.replace(/^(هاتف المستأجر|جوال المستأجر|التليفون|الجوال|هاتف|موبايل)[\s:：\-]*/i, '').trim();
+      phone = phone.replace(/[^0-9+]/g, '');
+      if (phone.startsWith('+966')) phone = '0' + phone.slice(4);
+      else if (phone.startsWith('966') && phone.length > 3) phone = '0' + phone.slice(3);
       if (!result.tenantPhone) result.tenantPhone = phone;
     }
 
@@ -366,6 +401,100 @@ app.put('/api/settings', (req, res) => {
   upsert.run('endAlertDays', String(endAlertDays));
   res.json({ ok: true });
 });
+
+function callDeepSeek(text) {
+  return new Promise((resolve, reject) => {
+    const prompt = `استخرج بيانات عقد الإيجار هذا وأرجع JSON فقط
+
+الحقول المطلوبة:
+- propertyName: اسم العقار (نص)
+- tenantName: اسم المستأجر (نص)
+- tenantPhone: رقم جوال المستأجر (نص)
+- tenantRepresentative: مندوب المستأجر أو الممثل (نص)
+- startDate: تاريخ بداية العقد (YYYY-MM-DD)
+- endDate: تاريخ نهاية العقد (YYYY-MM-DD)
+- totalValue: قيمة العقد الإجمالية بالأرقام فقط
+- vatInclusive: هل القيمة شامل الضريبة؟ (true/false)
+- vatRate: نسبة الضريبة بالأرقام (مثلاً 15)
+- payments: مصفوفة من الدفعات، كل دفعة فيها:
+  - label: اسم الدفعة أو رقمها
+  - date: تاريخ استحقاق الدفعة (YYYY-MM-DD)
+  - amount: مبلغ الدفعة بالأرقام
+  - status: الحالة (paid أو unpaid)
+
+ملاحظات مهمة:
+- إذا العقد يذكر ضريبة 15% فـ vatInclusive = true
+- إذا العقد لا يذكر ضريبة فـ vatInclusive = false
+- استخرج كل الدفعات الموجودة في العقد بمواعيدها
+- إذا ما في دفعات محددة، اجعل payments مصفوفة فاضية
+
+العقد:
+${text}`;
+
+    const body = JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+      max_tokens: 4096
+    });
+
+    const options = {
+      hostname: 'api.deepseek.com',
+      path: '/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + DEEPSEEK_API_KEY,
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: 30000
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.error) return reject(new Error(json.error.message));
+          const content = json.choices[0].message.content;
+          const clean = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const result = JSON.parse(clean);
+          // تحويل رقم الهاتف: +9665xxxxxxx → 05xxxxxxxx
+          let phone = (result.tenantPhone || '').replace(/[^0-9+]/g, '');
+          if (phone.startsWith('+966')) phone = '0' + phone.slice(4);
+          else if (phone.startsWith('966') && phone.length > 3) phone = '0' + phone.slice(3);
+
+          resolve({
+            propertyName: result.propertyName || '',
+            tenantName: result.tenantName || '',
+            tenantPhone: phone,
+            tenantRepresentative: result.tenantRepresentative || '',
+            startDate: result.startDate || '',
+            endDate: result.endDate || '',
+            totalValue: parseFloat(result.totalValue) || 0,
+            hasTax: result.vatInclusive !== undefined ? result.vatInclusive : (result.hasTax !== undefined ? result.hasTax : true),
+            taxRate: parseFloat(result.vatRate || result.taxRate) || 15,
+            payments: (result.payments || []).map(p => ({
+              label: p.label || 'دفعة',
+              date: p.date || '',
+              status: p.status || 'unpaid',
+              amount: parseFloat(p.amount) || 0
+            }))
+          });
+        } catch (e) {
+          reject(new Error('فشل تحليل رد الذكاء الاصطناعي'));
+        }
+      });
+    });
+
+    req.on('error', (e) => reject(new Error(e.message)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('انتهت المهلة')); });
+    req.write(body);
+    req.end();
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`✅ الخادم يعمل على http://localhost:${PORT}`);
