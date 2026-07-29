@@ -584,7 +584,10 @@ async function apiGet(url){
 }
 async function apiSend(url, method, body){
   const res = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  if(!res.ok) throw new Error('request failed');
+  if(!res.ok) {
+    const errData = await res.json().catch(()=>({}));
+    throw new Error(errData.error || 'request failed');
+  }
   return res.json();
 }
 
@@ -1114,7 +1117,7 @@ contractForm.addEventListener('submit', async (e)=>{
     render();
   }catch(err){
     if (err.message && err.message.includes('موجود مسبقاً')) {
-      if (!confirm('⚠️ هذا العقد موجود مسبقاً!\nهل تريد إضافته مع التكرار؟')) return;
+      if (!confirm('هذا العقد مدرج مسبقا هل انت متأكد من اضافته؟')) return;
       try {
         const data2 = await apiSend('/api/contracts/force', 'POST', contract);
         contract.id = data2.id;
