@@ -1,14 +1,36 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const Database = require('better-sqlite3');
 const pdfParse = require('pdf-parse');
 const multer = require('multer');
 const https = require('https');
+const admin = require('firebase-admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DEEPSEEK_API_KEY = 'sk-a9e3ac1277034e26922d521ae1315da2';
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'sk-a9e3ac1277034e26922d521ae1315da2';
+
+// --- إعداد Firebase (قاعدة بيانات سحابية مشتركة) ---
+// الأولوية: متغير بيئة FIREBASE_SERVICE_ACCOUNT (للاستضافة السحابية) ثم ملف serviceAccountKey.json (محلياً)
+function loadServiceAccount() {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  }
+  const serviceAccountPath = path.join(__dirname, 'serviceAccountKey.json');
+  if (!fs.existsSync(serviceAccountPath)) {
+    console.error('❌ مفتاح Firebase غير موجود!');
+    console.error('ضع ملف serviceAccountKey.json بجانب server.js، أو ضع محتواه في متغير FIREBASE_SERVICE_ACCOUNT');
+    process.exit(1);
+  }
+  return require(serviceAccountPath);
+}
+admin.initializeApp({
+  credential: admin.credential.cert(loadServiceAccount()),
+  databaseURL: 'https://alqaih-default-rtdb.europe-west1.firebasedatabase.app'
+});
+const rtdb = admin.database();
+const contractsRef = rtdb.ref('contracts');
+const settingsRef = rtdb.ref('settings');
 
 // --- إعداد مجلد PDF ---
 const pdfDir = path.join(__dirname, 'pdf');
@@ -31,89 +53,38 @@ const upload = multer({
   }
 });
 
-// --- إعداد قاعدة البيانات ---
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
-const db = new Database(path.join(dataDir, 'contracts.db'));
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-db.exec(`
-CREATE TABLE IF NOT EXISTS contracts (
-  id TEXT PRIMARY KEY,
-  property_name TEXT NOT NULL,
-  tenant_name TEXT NOT NULL DEFAULT '',
-  cancelled INTEGER NOT NULL DEFAULT 0,
-  start_date TEXT NOT NULL,
-  end_date TEXT NOT NULL,
-  total_value REAL NOT NULL DEFAULT 0,
-  has_tax INTEGER NOT NULL DEFAULT 1,
-  tax_rate REAL NOT NULL DEFAULT 15,
-  payment_frequency TEXT NOT NULL DEFAULT 'custom',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS payments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  contract_id TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  label TEXT NOT NULL,
-  date TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'unpaid',
-  amount REAL NOT NULL DEFAULT 0,
-  FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-`);
-
-// --- ترقية آمنة لقواعد بيانات قديمة تم إنشاؤها قبل إضافة هذه الأعمدة ---
-function ensureColumn(table, column, definition) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
-  const exists = cols.some((c) => c.name === column);
-  if (!exists) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-  }
-}
-ensureColumn('contracts', 'tenant_name', "TEXT NOT NULL DEFAULT ''");
-ensureColumn('contracts', 'tenant_phone', "TEXT NOT NULL DEFAULT ''");
-ensureColumn('contracts', 'tenant_representative', "TEXT NOT NULL DEFAULT ''");
-ensureColumn('contracts', 'payment_frequency', "TEXT NOT NULL DEFAULT 'custom'");
-ensureColumn('payments', 'amount', 'REAL NOT NULL DEFAULT 0');
-
-const seedSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
-seedSetting.run('paymentAlertDays', '7');
-seedSetting.run('endAlertDays', '30');
-
 // --- Middleware ---
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/pdf', express.static(pdfDir));
 
 // --- أدوات مساعدة ---
-function getContractsFull() {
-  const contracts = db.prepare('SELECT * FROM contracts ORDER BY created_at DESC').all();
-  const paymentsStmt = db.prepare('SELECT * FROM payments WHERE contract_id = ? ORDER BY position ASC');
-  return contracts.map((c) => ({
-    id: c.id,
-    propertyName: c.property_name,
-    tenantName: c.tenant_name,
-    tenantPhone: c.tenant_phone,
-    tenantRepresentative: c.tenant_representative,
+async function getContractsFull() {
+  const snap = await contractsRef.once('value');
+  const data = snap.val() || {};
+  const list = Object.entries(data).map(([id, c]) => ({
+    id,
+    propertyName: c.propertyName || '',
+    tenantName: c.tenantName || '',
+    tenantPhone: c.tenantPhone || '',
+    tenantRepresentative: c.tenantRepresentative || '',
     cancelled: !!c.cancelled,
-    startDate: c.start_date,
-    endDate: c.end_date,
-    totalValue: c.total_value,
-    hasTax: !!c.has_tax,
-    taxRate: c.tax_rate,
-    paymentFrequency: c.payment_frequency,
-    payments: paymentsStmt
-      .all(c.id)
-      .map((p) => ({ label: p.label, date: p.date, status: p.status, amount: p.amount })),
+    startDate: c.startDate || '',
+    endDate: c.endDate || '',
+    totalValue: c.totalValue || 0,
+    hasTax: c.hasTax !== undefined ? !!c.hasTax : true,
+    taxRate: c.taxRate || 15,
+    paymentFrequency: c.paymentFrequency || 'custom',
+    createdAt: c.createdAt || 0,
+    payments: Object.values(c.payments || {}).map((p) => ({
+      label: p.label || '',
+      date: p.date || '',
+      status: p.status || 'unpaid',
+      amount: p.amount || 0,
+    })),
   }));
+  list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return list;
 }
 
 function newId() {
@@ -123,49 +94,58 @@ function newId() {
 // --- مسارات API ---
 
 // جلب كل العقود
-app.get('/api/contracts', (req, res) => {
-  res.json(getContractsFull());
+app.get('/api/contracts', async (req, res) => {
+  try {
+    res.json(await getContractsFull());
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر جلب العقود' });
+  }
 });
 
-function insertContractFn(c, id) {
-  const insertContract = db.prepare(`
-    INSERT INTO contracts (id, property_name, tenant_name, tenant_phone, tenant_representative, cancelled, start_date, end_date, total_value, has_tax, tax_rate, payment_frequency)
-    VALUES (@id, @propertyName, @tenantName, @tenantPhone, @tenantRepresentative, @cancelled, @startDate, @endDate, @totalValue, @hasTax, @taxRate, @paymentFrequency)
-  `);
-  const insertPayment = db.prepare(
-    'INSERT INTO payments (contract_id, position, label, date, status, amount) VALUES (?, ?, ?, ?, ?, ?)'
-  );
-  const tx = db.transaction(() => {
-    insertContract.run({
-      id, propertyName: c.propertyName, tenantName: c.tenantName || '',
-      tenantPhone: c.tenantPhone || '', tenantRepresentative: c.tenantRepresentative || '',
-      cancelled: c.cancelled ? 1 : 0, startDate: c.startDate, endDate: c.endDate,
-      totalValue: c.totalValue, hasTax: c.hasTax ? 1 : 0, taxRate: c.taxRate,
-      paymentFrequency: c.paymentFrequency || 'custom',
-    });
-    (c.payments || []).forEach((p, idx) => {
-      insertPayment.run(id, idx, p.label, p.date, p.status, p.amount || 0);
-    });
+async function insertContractFn(c, id) {
+  await contractsRef.child(id).set({
+    propertyName: c.propertyName || '',
+    tenantName: c.tenantName || '',
+    tenantPhone: c.tenantPhone || '',
+    tenantRepresentative: c.tenantRepresentative || '',
+    cancelled: !!c.cancelled,
+    startDate: c.startDate || '',
+    endDate: c.endDate || '',
+    totalValue: c.totalValue || 0,
+    hasTax: c.hasTax !== undefined ? !!c.hasTax : true,
+    taxRate: c.taxRate || 15,
+    paymentFrequency: c.paymentFrequency || 'custom',
+    createdAt: admin.database.ServerValue.TIMESTAMP,
+    payments: (c.payments || []).map((p) => ({
+      label: p.label || '',
+      date: p.date || '',
+      status: p.status || 'unpaid',
+      amount: p.amount || 0,
+    })),
   });
-  tx();
 }
 
 // إضافة عقد جديد
-app.post('/api/contracts', (req, res) => {
+app.post('/api/contracts', async (req, res) => {
   const c = req.body;
   const id = newId();
 
-  const duplicate = db.prepare(`
-    SELECT id FROM contracts
-    WHERE property_name = ? AND tenant_name = ? AND start_date = ? AND end_date = ? AND total_value = ?
-  `).get(c.propertyName, c.tenantName || '', c.startDate, c.endDate, c.totalValue);
-
-  if (duplicate) {
-    return res.status(409).json({ error: 'هذا العقد موجود مسبقاً', duplicateId: duplicate.id });
-  }
-
   try {
-    insertContractFn(c, id);
+    const existing = await getContractsFull();
+    const duplicate = existing.find((x) =>
+      x.propertyName === (c.propertyName || '') &&
+      x.tenantName === (c.tenantName || '') &&
+      x.startDate === (c.startDate || '') &&
+      x.endDate === (c.endDate || '') &&
+      x.totalValue === (c.totalValue || 0)
+    );
+
+    if (duplicate) {
+      return res.status(409).json({ error: 'هذا العقد موجود مسبقاً', duplicateId: duplicate.id });
+    }
+
+    await insertContractFn(c, id);
     res.status(201).json({ id });
   } catch (err) {
     console.error(err);
@@ -174,56 +154,47 @@ app.post('/api/contracts', (req, res) => {
 });
 
 // إضافة عقد جديد بدون فحص تكرار
-app.post('/api/contracts/force', (req, res) => {
+app.post('/api/contracts/force', async (req, res) => {
   try {
     const id = newId();
-    insertContractFn(req.body, id);
+    await insertContractFn(req.body, id);
     res.status(201).json({ id });
   } catch (err) {
+    console.error(err);
     res.status(400).json({ error: 'تعذر إنشاء العقد' });
   }
 });
 
 // تحديث عقد
-app.put('/api/contracts/:id', (req, res) => {
+app.put('/api/contracts/:id', async (req, res) => {
   const id = req.params.id;
   const c = req.body;
 
-  const updateContract = db.prepare(`
-    UPDATE contracts SET property_name=@propertyName, tenant_name=@tenantName, tenant_phone=@tenantPhone,
-      tenant_representative=@tenantRepresentative, cancelled=@cancelled, start_date=@startDate,
-      end_date=@endDate, total_value=@totalValue, has_tax=@hasTax, tax_rate=@taxRate,
-      payment_frequency=@paymentFrequency WHERE id=@id
-  `);
-  const deletePayments = db.prepare('DELETE FROM payments WHERE contract_id = ?');
-  const insertPayment = db.prepare(
-    'INSERT INTO payments (contract_id, position, label, date, status, amount) VALUES (?, ?, ?, ?, ?, ?)'
-  );
+  try {
+    const ref = contractsRef.child(id);
+    const exists = (await ref.once('value')).exists();
+    if (!exists) return res.status(404).json({ error: 'العقد غير موجود' });
 
-  const tx = db.transaction(() => {
-    const result = updateContract.run({
-      id,
-      propertyName: c.propertyName,
+    await ref.set({
+      propertyName: c.propertyName || '',
       tenantName: c.tenantName || '',
       tenantPhone: c.tenantPhone || '',
       tenantRepresentative: c.tenantRepresentative || '',
-      cancelled: c.cancelled ? 1 : 0,
-      startDate: c.startDate,
-      endDate: c.endDate,
-      totalValue: c.totalValue,
-      hasTax: c.hasTax ? 1 : 0,
-      taxRate: c.taxRate,
+      cancelled: !!c.cancelled,
+      startDate: c.startDate || '',
+      endDate: c.endDate || '',
+      totalValue: c.totalValue || 0,
+      hasTax: c.hasTax !== undefined ? !!c.hasTax : true,
+      taxRate: c.taxRate || 15,
       paymentFrequency: c.paymentFrequency || 'custom',
+      createdAt: admin.database.ServerValue.TIMESTAMP,
+      payments: (c.payments || []).map((p) => ({
+        label: p.label || '',
+        date: p.date || '',
+        status: p.status || 'unpaid',
+        amount: p.amount || 0,
+      })),
     });
-    if (result.changes === 0) throw new Error('العقد غير موجود');
-    deletePayments.run(id);
-    (c.payments || []).forEach((p, idx) => {
-      insertPayment.run(id, idx, p.label, p.date, p.status, p.amount || 0);
-    });
-  });
-
-  try {
-    tx();
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -232,25 +203,36 @@ app.put('/api/contracts/:id', (req, res) => {
 });
 
 // تبديل حالة سداد دفعة واحدة
-app.patch('/api/contracts/:id/payments/:index', (req, res) => {
+app.patch('/api/contracts/:id/payments/:index', async (req, res) => {
   const { id, index } = req.params;
   const { status } = req.body;
-  const payments = db.prepare('SELECT id FROM payments WHERE contract_id = ? ORDER BY position ASC').all(id);
-  const target = payments[Number(index)];
-  if (!target) return res.status(404).json({ error: 'الدفعة غير موجودة' });
-  db.prepare('UPDATE payments SET status = ? WHERE id = ?').run(status, target.id);
-  res.json({ ok: true });
+  try {
+    const ref = contractsRef.child(id);
+    const snap = await ref.once('value');
+    if (!snap.exists()) return res.status(404).json({ error: 'الدفعة غير موجودة' });
+    const c = snap.val();
+    const payments = Object.values(c.payments || {}).map((p) => ({ ...p }));
+    const target = payments[Number(index)];
+    if (!target) return res.status(404).json({ error: 'الدفعة غير موجودة' });
+    payments[Number(index)] = { ...target, status };
+    await ref.update({ payments });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر تحديث الدفعة' });
+  }
 });
 
 // حذف عقد
-app.delete('/api/contracts/:id', (req, res) => {
+app.delete('/api/contracts/:id', async (req, res) => {
   const id = req.params.id;
-  const tx = db.transaction(() => {
-    db.prepare('DELETE FROM payments WHERE contract_id = ?').run(id);
-    db.prepare('DELETE FROM contracts WHERE id = ?').run(id);
-  });
-  tx();
-  res.json({ ok: true });
+  try {
+    await contractsRef.child(id).remove();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر حذف العقد' });
+  }
 });
 
 // مسح ملف PDF واستخراج بيانات العقد عبر DeepSeek AI
@@ -384,22 +366,33 @@ function parseDate(str) {
   return str;
 }
 
-// إعدادات التنبيهات
-app.get('/api/settings', (req, res) => {
-  const rows = db.prepare('SELECT * FROM settings').all();
-  const obj = {};
-  rows.forEach((r) => (obj[r.key] = Number(r.value)));
-  res.json(obj);
+// --- إعدادات التنبيهات (مخزنة في Realtime Database) ---
+app.get('/api/settings', async (req, res) => {
+  try {
+    const snap = await settingsRef.once('value');
+    const data = snap.val() || {};
+    res.json({
+      paymentAlertDays: Number(data.paymentAlertDays) || 7,
+      endAlertDays: Number(data.endAlertDays) || 30,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر جلب الإعدادات' });
+  }
 });
 
-app.put('/api/settings', (req, res) => {
+app.put('/api/settings', async (req, res) => {
   const { paymentAlertDays, endAlertDays } = req.body;
-  const upsert = db.prepare(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value'
-  );
-  upsert.run('paymentAlertDays', String(paymentAlertDays));
-  upsert.run('endAlertDays', String(endAlertDays));
-  res.json({ ok: true });
+  try {
+    await settingsRef.set({
+      paymentAlertDays: Number(paymentAlertDays) || 7,
+      endAlertDays: Number(endAlertDays) || 30,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر حفظ الإعدادات' });
+  }
 });
 
 function callDeepSeek(text) {
@@ -498,5 +491,5 @@ ${text}`;
 
 app.listen(PORT, () => {
   console.log(`✅ الخادم يعمل على http://localhost:${PORT}`);
-  console.log(`📁 قاعدة البيانات: ${path.join(dataDir, 'contracts.db')}`);
+  console.log('☁️ قاعدة البيانات: Firebase Realtime Database (سحابية مشتركة)');
 });
