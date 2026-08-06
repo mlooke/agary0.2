@@ -58,7 +58,15 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
   background:var(--primary-tint);border-radius:20px;padding:4px 10px;margin-top:8px;font-weight:700;
 }
 .db-badge.offline{background:var(--danger-tint);color:var(--danger);}
-.top-actions{display:flex;gap:10px;}
+.top-actions{display:flex;gap:10px;align-items:center;}
+.user-badge{
+  display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;
+  color:var(--primary-dark);background:var(--primary-tint);border-radius:20px;padding:6px 12px;
+}
+.login-error{
+  background:var(--danger-tint);color:var(--danger);border-radius:8px;padding:8px 12px;
+  font-size:12.5px;font-weight:700;margin-bottom:10px;
+}
 .btn{
   border:none;border-radius:10px;padding:10px 18px;font-family:'Tajawal',sans-serif;
   font-weight:700;font-size:14px;cursor:pointer;transition:transform .12s ease, box-shadow .12s ease;
@@ -372,6 +380,8 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
       <span class="db-badge" id="dbBadge">● متصل بقاعدة البيانات المحلية</span>
     </div>
     <div class="top-actions">
+      <span class="user-badge" id="userBadge" style="display:none;"></span>
+      <button class="btn btn-ghost" id="logoutBtn" style="display:none;">تسجيل الخروج</button>
       <button class="btn btn-ghost" id="settingsBtn">⚙️ الإعدادات</button>
       <button class="btn btn-primary" id="addBtn">+ إضافة عقد</button>
     </div>
@@ -496,6 +506,30 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
         <button type="submit" class="btn btn-primary" id="saveBtn">حفظ العقد</button>
       </div>
     </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="loginModalOverlay">
+  <div class="modal" style="max-width:400px;">
+    <h2 id="loginTitle">تسجيل الدخول</h2>
+    <p class="pdf-scan-hint" id="loginHint">أدخل بياناتك للوصول إلى عقودك</p>
+    <div class="field">
+      <label>اسم المستخدم</label>
+      <input type="text" id="loginUsername" placeholder="مثال: شركة-أ" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>كلمة المرور</label>
+      <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="field" id="masterField" style="display:none;">
+      <label>كلمة الماستر</label>
+      <input type="password" id="loginMaster" placeholder="مطلوبة عند إنشاء حساب فقط">
+    </div>
+    <div id="loginError" class="login-error" style="display:none;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="loginToggleBtn"></button>
+      <button type="button" class="btn btn-primary" id="loginSubmitBtn">دخول</button>
+    </div>
   </div>
 </div>
 
@@ -638,17 +672,88 @@ function fmtMoney(n){ if(isNaN(n)) return '0.00'; return Number(n).toLocaleStrin
 function diffDays(fromDate, toDate){ return Math.round((toDate - fromDate) / (1000*60*60*24)); }
 
 async function apiGet(url){
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') } });
+  if(res.status === 401){ showLogin(); throw new Error('unauthorized'); }
   if(!res.ok) throw new Error('request failed');
   return res.json();
 }
 async function apiSend(url, method, body){
-  const res = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const res = await fetch(url, { method, headers:{'Content-Type':'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '')}, body: JSON.stringify(body) });
+  if(res.status === 401){ showLogin(); throw new Error('unauthorized'); }
   if(!res.ok) {
     const errData = await res.json().catch(()=>({}));
     throw new Error(errData.error || 'request failed');
   }
   return res.json();
+}
+
+let currentUser = '';
+let loginMode = 'login'; // login | register
+
+function showLogin(){
+  loginMode = 'login';
+  document.getElementById('loginTitle').textContent = 'تسجيل الدخول';
+  document.getElementById('loginHint').textContent = 'أدخل بياناتك للوصول إلى عقودك';
+  document.getElementById('masterField').style.display = 'none';
+  document.getElementById('loginToggleBtn').textContent = 'إنشاء حساب جديد';
+  document.getElementById('loginSubmitBtn').textContent = 'دخول';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginModalOverlay').classList.add('open');
+  document.querySelector('.alerts-row').style.display = 'none';
+  document.querySelector('.filters').style.display = 'none';
+  document.getElementById('calendarCard').style.display = 'none';
+  document.getElementById('cardsContainer').innerHTML = '';
+}
+function hideLogin(){
+  document.getElementById('loginModalOverlay').classList.remove('open');
+}
+
+function toggleLoginMode(){
+  loginMode = loginMode === 'login' ? 'register' : 'login';
+  document.getElementById('loginTitle').textContent = loginMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد';
+  document.getElementById('loginHint').textContent = loginMode === 'login'
+    ? 'أدخل بياناتك للوصول إلى عقودك'
+    : 'أنشئ حساباً جديداً — كلمة الماستر مطلوبة فقط هنا';
+  document.getElementById('masterField').style.display = loginMode === 'register' ? '' : 'none';
+  document.getElementById('loginToggleBtn').textContent = loginMode === 'login' ? 'إنشاء حساب جديد' : 'لدي حساب بالفعل';
+  document.getElementById('loginSubmitBtn').textContent = loginMode === 'login' ? 'دخول' : 'إنشاء حساب';
+  document.getElementById('loginError').style.display = 'none';
+}
+
+async function submitLogin(){
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const master = document.getElementById('loginMaster').value;
+  const errEl = document.getElementById('loginError');
+
+  try{
+    const url = loginMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const body = loginMode === 'login' ? { username, password } : { username, password, master };
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error || 'فشل العملية');
+
+    localStorage.setItem('token', data.token);
+    currentUser = data.username;
+    document.getElementById('userBadge').textContent = '👤 ' + data.username;
+    document.getElementById('userBadge').style.display = '';
+    document.getElementById('logoutBtn').style.display = '';
+    hideLogin();
+    await loadData();
+    render();
+  }catch(e){
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function logout(){
+  fetch('/api/auth/logout', { method:'POST', headers:{ 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') } }).catch(()=>{});
+  localStorage.removeItem('token');
+  currentUser = '';
+  document.getElementById('userBadge').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'none';
+  showLogin();
 }
 
 async function loadData(){
@@ -1071,7 +1176,7 @@ document.addEventListener('click', (e)=>{
 async function deleteContract(id){
   if(!confirm('هل تريد حذف هذا العقد؟')) return;
   try{
-    await fetch(`/api/contracts/${id}`, { method:'DELETE' });
+    await fetch(`/api/contracts/${id}`, { method:'DELETE', headers:{ 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') } });
     contracts = contracts.filter(c=>c.id!==id);
     const match = location.hash.match(/^#\/contract\/(.+)$/);
     if(match && match[1] === id) location.hash = '';
@@ -1113,7 +1218,7 @@ document.getElementById('pdfFileInput').addEventListener('change', async (e) => 
   formData.append('pdf', file);
 
   try {
-    const res = await fetch('/api/contracts/scan-pdf', { method: 'POST', body: formData });
+    const res = await fetch('/api/contracts/scan-pdf', { method: 'POST', headers:{ 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }, body: formData });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'تعذر قراءة الملف');
 
@@ -1321,10 +1426,31 @@ document.getElementById('statusFilter').addEventListener('change', render);
 
 window.addEventListener('hashchange', render);
 
-(async function init(){
-  await loadData();
-  render();
-})();
+// --- أحداث نافذة الدخول ---
+document.getElementById('loginToggleBtn').addEventListener('click', toggleLoginMode);
+document.getElementById('loginSubmitBtn').addEventListener('click', submitLogin);
+document.getElementById('loginPassword').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') submitLogin(); });
+document.getElementById('loginMaster').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') submitLogin(); });
+document.getElementById('logoutBtn').addEventListener('click', logout);
+
+async function init(){
+  const token = localStorage.getItem('token');
+  if(token){
+    try{
+      const me = await apiGet('/api/auth/me');
+      currentUser = me.username;
+      document.getElementById('userBadge').textContent = '👤 ' + currentUser;
+      document.getElementById('userBadge').style.display = '';
+      document.getElementById('logoutBtn').style.display = '';
+      await loadData();
+      render();
+      return;
+    }catch(e){ /* انتهت الجلسة → شاشة الدخول */ }
+  }
+  showLogin();
+}
+
+init();
 </script>
 </body>
 </html>
