@@ -80,47 +80,48 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
 .btn-sm{padding:6px 12px;font-size:12.5px;border-radius:8px;}
 .btn-danger-ghost{background:var(--surface);color:var(--danger);border:1px solid var(--danger-tint);}
 
-.alerts-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+.dashboard-row{display:flex;gap:16px;align-items:flex-start;margin-bottom:20px;}
+.alerts-row{display:flex;flex-direction:column;gap:10px;width:170px;flex-shrink:0;}
 .alert-card{
-  background:var(--surface);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);
-  border-inline-start:4px solid var(--gray);display:flex;align-items:center;gap:12px;
-  cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;
+  background:var(--surface);border-radius:14px;padding:10px;box-shadow:var(--shadow);
+  border-top:4px solid var(--gray);display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;text-align:center;aspect-ratio:1/1;width:100%;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;
 }
 .alert-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.1);}
 .alert-card.active-filter{outline:2px solid var(--primary);outline-offset:2px;transform:translateY(-2px);}
-.alert-card .num{font-family:'Cairo',sans-serif;font-size:26px;font-weight:800;line-height:1;}
-.alert-card .lbl{font-size:12.5px;color:var(--ink-soft);font-weight:500;}
-.alert-card.danger{border-inline-start-color:var(--danger);}
+.alert-card .num{font-family:'Cairo',sans-serif;font-size:24px;font-weight:800;line-height:1;}
+.alert-card .lbl{font-size:11.5px;color:var(--ink-soft);font-weight:700;}
+.alert-card.danger{border-top-color:var(--danger);}
 .alert-card.danger .num{color:var(--danger);}
-.alert-card.warning{border-inline-start-color:var(--warning);}
+.alert-card.warning{border-top-color:var(--warning);}
 .alert-card.warning .num{color:var(--warning);}
-.alert-card.info{border-inline-start-color:var(--primary);}
+.alert-card.info{border-top-color:var(--primary);}
 .alert-card.info .num{color:var(--primary);}
 
 .calendar-card{
   background:var(--surface);border-radius:16px;box-shadow:var(--shadow);
-  padding:14px 16px;margin-bottom:18px;position:relative;
+  padding:10px 12px;flex:1;min-width:0;position:relative;
 }
-.calendar-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;}
-.cal-nav{display:flex;align-items:center;gap:10px;}
+.calendar-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;}
+.cal-nav{display:flex;align-items:center;gap:8px;}
 .cal-arrow{
   border:1px solid var(--border);background:var(--surface);color:var(--primary-dark);
-  border-radius:8px;width:30px;height:30px;font-size:20px;line-height:1;cursor:pointer;
+  border-radius:8px;width:26px;height:26px;font-size:18px;line-height:1;cursor:pointer;
   display:inline-flex;align-items:center;justify-content:center;font-family:'Tajawal',sans-serif;
 }
 .cal-arrow:hover{background:var(--primary-tint);}
-.calendar-title{font-family:'Cairo',sans-serif;font-weight:800;font-size:15px;color:var(--primary-dark);display:flex;align-items:center;gap:8px;white-space:nowrap;}
-.calendar-title span{color:var(--ink-soft);font-weight:700;font-size:13px;}
-.calendar-legend{display:flex;gap:14px;font-size:11.5px;color:var(--ink-soft);flex-wrap:wrap;}
+.calendar-title{font-family:'Cairo',sans-serif;font-weight:800;font-size:14px;color:var(--primary-dark);display:flex;align-items:center;gap:8px;white-space:nowrap;}
+.calendar-title span{color:var(--ink-soft);font-weight:700;font-size:12px;}
+.calendar-legend{display:flex;gap:12px;font-size:10.5px;color:var(--ink-soft);flex-wrap:wrap;}
 .calendar-legend .lg{display:inline-flex;align-items:center;gap:5px;font-weight:700;}
 .lg-paid{color:var(--success);} .lg-unpaid{color:var(--warning);} .lg-end{color:var(--danger);}
-.cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
-.cal-head div{text-align:center;font-size:10.5px;font-weight:700;color:var(--ink-faint);padding:3px 0;}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
-.cal-empty{min-height:32px;}
+.cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;}
+.cal-head div{text-align:center;font-size:9.5px;font-weight:700;color:var(--ink-faint);padding:2px 0;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+.cal-empty{min-height:28px;}
 .cal-day{
-  min-height:34px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  font-size:12.5px;font-weight:700;color:var(--ink);background:var(--surface-alt);
+  min-height:30px;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:11.5px;font-weight:700;color:var(--ink);background:var(--surface-alt);
   border:1px solid var(--border);position:relative;cursor:default;transition:transform .1s ease,box-shadow .1s ease;
 }
 .cal-day.day-paid{background:var(--success-tint);color:var(--success);border-color:transparent;cursor:pointer;}
@@ -301,7 +302,9 @@ fieldset{border:1px solid var(--border);border-radius:10px;margin:0 0 14px;paddi
 legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
 
 @media(max-width:640px){
-  .alerts-row{grid-template-columns:1fr;}
+  .dashboard-row{flex-direction:column;}
+  .alerts-row{width:100%;flex-direction:row;}
+  .alert-card{aspect-ratio:auto;}
   .value-row{grid-template-columns:1fr;}
   .payments{grid-template-columns:1fr;}
   .field-row{grid-template-columns:1fr;}
@@ -386,6 +389,7 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
     </div>
   </div>
 
+  <div class="dashboard-row">
   <div class="alerts-row">
     <div class="alert-card danger" id="alertOverdue" onclick="toggleAlertFilter('overdue')"><div><div class="num">0</div><div class="lbl">دفعات متأخرة</div></div></div>
     <div class="alert-card warning" id="alertDueSoon" onclick="toggleAlertFilter('due-soon')"><div><div class="num">0</div><div class="lbl">دفعات مستحقة قريبًا</div></div></div>
@@ -407,6 +411,7 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
     </div>
     <div id="calendar"></div>
     <div class="cal-tooltip" id="calTooltip" style="display:none;"></div>
+  </div>
   </div>
 
   <div class="filters">
