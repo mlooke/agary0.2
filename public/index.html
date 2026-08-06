@@ -1048,10 +1048,6 @@ function renderList(){
           ? `<div class="next-payment"><span class="np-label">الدفعة القادمة:</span> ${fmtDate(nextPay.date)} · <span class="np-amount">${fmtMoney(nextPay.amount || 0)}</span></div>`
           : `<div class="next-payment-done">✓ لا توجد دفعات متبقية</div>`}
       </div>
-      <div class="card-actions" onclick="event.stopPropagation()">
-        <button class="btn btn-sm btn-danger-ghost" onclick="deleteContract('${c.id}')">حذف</button>
-        <button class="btn btn-sm btn-ghost" onclick="openEditModal('${c.id}')">تعديل</button>
-      </div>
     </div>`;
   }).join('');
 }
