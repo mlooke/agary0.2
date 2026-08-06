@@ -197,6 +197,60 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({ username: req.user });
 });
 
+// إدارة الحسابات (تتطلب كلمة الماستر) — مخصصة لصاحب النظام فقط
+
+// جلب قائمة الحسابات (بدون كلمات المرور)
+app.get('/api/auth/users', async (req, res) => {
+  if (req.query.master !== MASTER_PASSWORD) return res.status(403).json({ error: 'كلمة الماستر غير صحيحة' });
+  try {
+    const snap = await usersRef.once('value');
+    const data = snap.val() || {};
+    const list = Object.entries(data).map(([name, u]) => ({
+      name,
+      createdAt: u.createdAt || 0,
+      contractsCount: 0
+    }));
+    const contractsSnap = await contractsRef.once('value');
+    const contracts = contractsSnap.val() || {};
+    list.forEach((u) => {
+      u.contractsCount = Object.values(contracts).filter((c) => c.owner === u.name).length;
+    });
+    list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    res.json(list);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر جلب الحسابات' });
+  }
+});
+
+// حذف حساب
+app.delete('/api/auth/users/:name', async (req, res) => {
+  const master = req.query.master || (req.body && req.body.master);
+  if (master !== MASTER_PASSWORD) return res.status(403).json({ error: 'كلمة الماستر غير صحيحة' });
+  const name = String(req.params.name || '').trim();
+  try {
+    const existing = await usersRef.child(name).once('value');
+    if (!existing.exists()) return res.status(404).json({ error: 'الحساب غير موجود' });
+    // العقود التي يملكها الحساب تصبح بدون مالك حتى يستلمها حساب آخر
+    const contractsSnap = await contractsRef.once('value');
+    const contracts = contractsSnap.val() || {};
+    const updates = {};
+    Object.entries(contracts).forEach(([id, c]) => {
+      if (c.owner === name) updates[id] = { ...c, owner: '' };
+    });
+    if (Object.keys(updates).length) await contractsRef.update(updates);
+    await usersRef.child(name).remove();
+    // إلغاء جلسات الحساب المحذوف
+    for (const [token, sess] of sessions) {
+      if (sess.username === name) sessions.delete(token);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر حذف الحساب' });
+  }
+});
+
 // --- مسارات API ---
 
 // جلب كل العقود (عقود الحساب فقط)
