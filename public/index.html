@@ -564,6 +564,13 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
     <div class="field"><label>تنبيه قبل نهاية العقد بعدد أيام</label><input type="number" id="endAlertDays" min="0" step="1"></div>
     <hr style="border:none;border-top:1px solid var(--border,#ddd);margin:14px 0;">
     <div class="field">
+      <label>الأرشيف</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-ghost" id="archiveBtn">🗂️ الأرشيف (العقود المنتهية والملغية)</button>
+      </div>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border,#ddd);margin:14px 0;">
+    <div class="field">
       <label>الحساب</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-ghost" id="accountsBtn" style="display:none;">👥 إدارة الحسابات</button>
@@ -961,7 +968,43 @@ function toggleAlertFilter(type){
 function render(){
   const match = location.hash.match(/^#\/contract\/(.+)$/);
   if(match){ renderDetail(match[1]); }
+  else if(location.hash === '#archive'){ renderArchive(); }
   else{ renderList(); }
+}
+
+// العقد الأرشيفي: منتهي المدة أو ملغى — يظهر في الأرشيف فقط
+function isArchived(c){
+  return !!c.cancelled || getStatus(c) === 'expired';
+}
+
+function contractCardHtml(c){
+  const st = getStatus(c);
+  const { net, tax } = computeTax(c.totalValue, c.hasTax, c.taxRate);
+  const endDays = diffDays(todayStr(), new Date(c.endDate));
+  const endNote = st === 'active' && endDays <= settings.endAlertDays && endDays >= 0
+    ? `<span style="color:var(--warning);font-weight:700;"> · ينتهي خلال ${endDays} يوم</span>` : '';
+  const nextPay = getNextPayment(c);
+  const overdue = hasOverduePayment(c);
+  return `
+  <div class="card ${st} card-clickable" onclick="navigateToContract('${c.id}')">
+    <div class="card-head">
+      <div>
+        <p class="prop-name">${escapeHtml(c.propertyName)}</p>
+        ${c.tenantName ? `<p class="prop-dates" style="margin-bottom:2px;">المستأجر: ${escapeHtml(c.tenantName)}</p>` : ''}
+        ${c.tenantPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف المستأجر: ${escapeHtml(c.tenantPhone)}</p>` : ''}
+        ${c.tenantRepresentative ? `<p class="prop-dates" style="margin-bottom:2px;">ممثل المستأجر: ${escapeHtml(c.tenantRepresentative)}</p>` : ''}
+        <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
+      </div>
+      <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
+    </div>
+    ${renderTimeline(c)}
+    <div class="next-payment-row">
+      ${overdue ? `<span class="overdue-flag">⚠ يوجد دفعة متأخرة</span>` : '<span></span>'}
+      ${nextPay
+        ? `<div class="next-payment"><span class="np-label">الدفعة القادمة:</span> ${fmtDate(nextPay.date)} · <span class="np-amount">${fmtMoney(nextPay.amount || 0)}</span></div>`
+        : `<div class="next-payment-done">✓ لا توجد دفعات متبقية</div>`}
+    </div>
+  </div>`;
 }
 
 function renderList(){
@@ -973,8 +1016,10 @@ function renderList(){
   const search = document.getElementById('searchInput').value.trim().toLowerCase();
   const statusFilterVal = document.getElementById('statusFilter').value;
 
+  const activeContracts = contracts.filter(c => !isArchived(c));
+
   let overdueCount = 0, dueSoonCount = 0, endingCount = 0;
-  contracts.forEach(c=>{
+  activeContracts.forEach(c=>{
     const st = getStatus(c);
     c.payments.forEach(p=>{
       const u = paymentUrgency(p);
@@ -990,7 +1035,7 @@ function renderList(){
   document.querySelector('#alertDueSoon .num').textContent = dueSoonCount;
   document.querySelector('#alertEnding .num').textContent = endingCount;
 
-  let filtered = contracts.filter(c=>{
+  let filtered = activeContracts.filter(c=>{
     const matchesSearch = !search || c.propertyName.toLowerCase().includes(search);
     const matchesStatus = statusFilterVal === 'all' || getStatus(c) === statusFilterVal;
     if(!matchesSearch || !matchesStatus) return false;
@@ -1011,45 +1056,38 @@ function renderList(){
   });
 
   if(filtered.length === 0){
+    const archivedCount = contracts.length - activeContracts.length;
     cardsContainer.innerHTML = `
       <div class="empty">
         <div class="icon">🗂️</div>
         <h3>${contracts.length === 0 ? 'لا توجد عقود بعد' : 'لا توجد نتائج مطابقة'}</h3>
         <p>${contracts.length === 0 ? 'أضف أول عقد لتبدأ متابعة الدفعات والتنبيهات' : 'جرّب تعديل البحث أو الفلتر'}</p>
         ${contracts.length === 0 ? '<button class="btn btn-primary" onclick="openAddModal()">+ إضافة عقد</button>' : ''}
+        ${archivedCount > 0 ? `<p style="margin-top:10px;"><a href="#archive" style="color:var(--primary);font-weight:700;">🗂️ الأرشيف (${archivedCount} عقد)</a></p>` : ''}
       </div>`;
     return;
   }
 
-  cardsContainer.innerHTML = filtered.map(c=>{
-    const st = getStatus(c);
-    const { net, tax } = computeTax(c.totalValue, c.hasTax, c.taxRate);
-    const endDays = diffDays(todayStr(), new Date(c.endDate));
-    const endNote = st === 'active' && endDays <= settings.endAlertDays && endDays >= 0
-      ? `<span style="color:var(--warning);font-weight:700;"> · ينتهي خلال ${endDays} يوم</span>` : '';
-    const nextPay = getNextPayment(c);
-    const overdue = hasOverduePayment(c);
-    return `
-    <div class="card ${st} card-clickable" onclick="navigateToContract('${c.id}')">
-      <div class="card-head">
-        <div>
-          <p class="prop-name">${escapeHtml(c.propertyName)}</p>
-          ${c.tenantName ? `<p class="prop-dates" style="margin-bottom:2px;">المستأجر: ${escapeHtml(c.tenantName)}</p>` : ''}
-          ${c.tenantPhone ? `<p class="prop-dates" style="margin-bottom:2px;">هاتف المستأجر: ${escapeHtml(c.tenantPhone)}</p>` : ''}
-          ${c.tenantRepresentative ? `<p class="prop-dates" style="margin-bottom:2px;">ممثل المستأجر: ${escapeHtml(c.tenantRepresentative)}</p>` : ''}
-          <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
-        </div>
-        <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
+  cardsContainer.innerHTML = filtered.map(contractCardHtml).join('');
+}
+
+function renderArchive(){
+  document.querySelector('.alerts-row').style.display = 'none';
+  document.querySelector('.filters').style.display = 'none';
+  document.getElementById('calendarCard').style.display = 'none';
+
+  const archived = contracts.filter(isArchived);
+  cardsContainer.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+      <div>
+        <h2 style="margin:0;font-size:20px;">🗂️ الأرشيف</h2>
+        <p style="margin:4px 0 0;color:var(--ink-soft);font-size:13px;">العقود المنتهية أو الملغية لهذا الحساب — اضغط أي عقد لفتحه أو تجديده</p>
       </div>
-      ${renderTimeline(c)}
-      <div class="next-payment-row">
-        ${overdue ? `<span class="overdue-flag">⚠ يوجد دفعة متأخرة</span>` : '<span></span>'}
-        ${nextPay
-          ? `<div class="next-payment"><span class="np-label">الدفعة القادمة:</span> ${fmtDate(nextPay.date)} · <span class="np-amount">${fmtMoney(nextPay.amount || 0)}</span></div>`
-          : `<div class="next-payment-done">✓ لا توجد دفعات متبقية</div>`}
-      </div>
-    </div>`;
-  }).join('');
+      <button class="btn btn-ghost btn-sm" onclick="navigateToList()">→ رجوع للرئيسية</button>
+    </div>
+    ${archived.length === 0
+      ? `<div class="empty"><div class="icon">📭</div><h3>لا توجد عقود في الأرشيف</h3><p>العقود المنتهية أو الملغية ستظهر هنا</p></div>`
+      : archived.map(contractCardHtml).join('')}`;
 }
 
 // تقويم الشهر الحالي مع أيام الاستحقاق والانتهاء
@@ -1076,6 +1114,7 @@ function renderCalendar(){
 
   const dayData = {};
   contracts.forEach(c => {
+    if(isArchived(c)) return;
     (c.payments || []).forEach(p => {
       if(!p.date) return;
       const d = new Date(p.date);
@@ -1159,13 +1198,14 @@ function renderDetail(id){
   }
 
   const st = getStatus(c);
+  const arch = isArchived(c);
   const { net, tax } = computeTax(c.totalValue, c.hasTax, c.taxRate);
   const endDays = diffDays(todayStr(), new Date(c.endDate));
   const endNote = st === 'active' && endDays <= settings.endAlertDays && endDays >= 0
     ? `<span style="color:var(--warning);font-weight:700;"> · ينتهي خلال ${endDays} يوم</span>` : '';
 
   cardsContainer.innerHTML = `
-    <button class="btn btn-ghost btn-sm" style="margin-bottom:14px;" onclick="navigateToList()">→ رجوع للقائمة</button>
+    <button class="btn btn-ghost btn-sm" style="margin-bottom:14px;" onclick="${arch ? "location.hash='#archive';render();" : "navigateToList()"}">→ رجوع لل${arch ? 'أرشيف' : 'قائمة'}</button>
     <div class="card ${st}">
       <div class="card-head">
         <div>
@@ -1201,7 +1241,9 @@ function renderDetail(id){
       </div>
       <div class="card-actions">
         <button class="btn btn-sm btn-danger-ghost" onclick="deleteContract('${c.id}')">حذف</button>
-        <button class="btn btn-sm btn-ghost" onclick="openEditModal('${c.id}')">تعديل</button>
+        ${arch
+          ? `<button class="btn btn-sm btn-primary" onclick="openRenewModal('${c.id}')">🔄 تجديد</button>`
+          : `<button class="btn btn-sm btn-ghost" onclick="openEditModal('${c.id}')">تعديل</button>`}
       </div>
     </div>`;
 }
@@ -1386,6 +1428,37 @@ function openEditModal(id){
   contractModalOverlay.classList.add('open');
 }
 
+// تجديد عقد أرشيفي: ينسخ بيانات العقد بتواريخ جديدة في عقد جديد، والأرشيفي يبقى محفوظاً
+let renewSourceId = '';
+
+function openRenewModal(id){
+  const c = contracts.find(x=>x.id===id);
+  if(!c) return;
+  renewSourceId = id;
+  document.getElementById('modalTitle').textContent = '🔄 تجديد العقد';
+  document.getElementById('pdfScanSection').style.display = 'none';
+  document.getElementById('pdfDivider').style.display = 'none';
+  document.getElementById('contractId').value = '';
+  document.getElementById('propertyName').value = c.propertyName;
+  document.getElementById('tenantName').value = c.tenantName || '';
+  document.getElementById('tenantPhone').value = c.tenantPhone || '';
+  document.getElementById('tenantRepresentative').value = c.tenantRepresentative || '';
+  document.getElementById('cancelledCheck').checked = false;
+  document.getElementById('startDate').value = '';
+  document.getElementById('endDate').value = '';
+  document.getElementById('totalValue').value = c.totalValue;
+  document.getElementById('hasTaxCheck').checked = c.hasTax;
+  document.getElementById('taxRate').value = c.taxRate;
+  document.getElementById('paymentFrequency').value = c.paymentFrequency || 'custom';
+  const count = (c.payments || []).length || 2;
+  document.getElementById('paymentCount').value = count;
+  currentPayments = Array.from({length: count}, () => ({ date: '', status: 'unpaid', amount: 0 }));
+  toggleTaxField();
+  updateTaxPreview();
+  renderPaymentsFields();
+  contractModalOverlay.classList.add('open');
+}
+
 function closeContractModal(){ contractModalOverlay.classList.remove('open'); }
 
 function toggleTaxField(){
@@ -1448,6 +1521,10 @@ contractForm.addEventListener('submit', async (e)=>{
       contracts.push(contract);
     }
     closeContractModal();
+    if(renewSourceId){
+      renewSourceId = '';
+      location.hash = '#/contract/' + contract.id;
+    }
     render();
   }catch(err){
     if (err.message && err.message.includes('موجود مسبقاً')) {
@@ -1457,6 +1534,10 @@ contractForm.addEventListener('submit', async (e)=>{
         contract.id = data2.id;
         contracts.push(contract);
         closeContractModal();
+        if(renewSourceId){
+          renewSourceId = '';
+          location.hash = '#/contract/' + contract.id;
+        }
         render();
         return;
       } catch(e) { alert('تعذر الحفظ'); }
@@ -1490,6 +1571,11 @@ document.getElementById('settingsBtn').addEventListener('click', ()=>{
 });
 document.getElementById('closeSettingsBtn').addEventListener('click', ()=> settingsModalOverlay.classList.remove('open'));
 settingsModalOverlay.addEventListener('click', (e)=>{ if(e.target === settingsModalOverlay) settingsModalOverlay.classList.remove('open'); });
+document.getElementById('archiveBtn').addEventListener('click', ()=>{
+  settingsModalOverlay.classList.remove('open');
+  location.hash = '#archive';
+  render();
+});
 document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   settings.paymentAlertDays = parseInt(document.getElementById('paymentAlertDays').value) || 0;
   settings.endAlertDays = parseInt(document.getElementById('endAlertDays').value) || 0;
