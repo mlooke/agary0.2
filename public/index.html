@@ -805,6 +805,7 @@ function showAccounts(){
   document.getElementById('accountsListWrap').style.display = 'none';
   document.getElementById('accountsError').style.display = 'none';
   document.getElementById('accountsModalOverlay').classList.add('open');
+  settingsModalOverlay.classList.remove('open');
 }
 
 async function loadAccounts(){
