@@ -89,6 +89,49 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
 .alert-card.info{border-inline-start-color:var(--primary);}
 .alert-card.info .num{color:var(--primary);}
 
+.calendar-card{
+  background:var(--surface);border-radius:16px;box-shadow:var(--shadow);
+  padding:14px 16px;margin-bottom:18px;position:relative;
+}
+.calendar-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;}
+.cal-nav{display:flex;align-items:center;gap:10px;}
+.cal-arrow{
+  border:1px solid var(--border);background:var(--surface);color:var(--primary-dark);
+  border-radius:8px;width:30px;height:30px;font-size:20px;line-height:1;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;font-family:'Tajawal',sans-serif;
+}
+.cal-arrow:hover{background:var(--primary-tint);}
+.calendar-title{font-family:'Cairo',sans-serif;font-weight:800;font-size:15px;color:var(--primary-dark);display:flex;align-items:center;gap:8px;white-space:nowrap;}
+.calendar-title span{color:var(--ink-soft);font-weight:700;font-size:13px;}
+.calendar-legend{display:flex;gap:14px;font-size:11.5px;color:var(--ink-soft);flex-wrap:wrap;}
+.calendar-legend .lg{display:inline-flex;align-items:center;gap:5px;font-weight:700;}
+.lg-paid{color:var(--success);} .lg-unpaid{color:var(--warning);} .lg-end{color:var(--danger);}
+.cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
+.cal-head div{text-align:center;font-size:10.5px;font-weight:700;color:var(--ink-faint);padding:3px 0;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.cal-empty{min-height:32px;}
+.cal-day{
+  min-height:34px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:12.5px;font-weight:700;color:var(--ink);background:var(--surface-alt);
+  border:1px solid var(--border);position:relative;cursor:default;transition:transform .1s ease,box-shadow .1s ease;
+}
+.cal-day.day-paid{background:var(--success-tint);color:var(--success);border-color:transparent;cursor:pointer;}
+.cal-day.day-unpaid{background:var(--gold-tint);color:#8a6415;border-color:transparent;cursor:pointer;}
+.cal-day.day-end{background:var(--danger-tint);color:var(--danger);border-color:transparent;cursor:pointer;}
+.cal-day:hover{transform:scale(1.07);box-shadow:0 4px 12px rgba(0,0,0,0.14);z-index:2;}
+.cal-day.day-today{border:2px solid var(--primary);}
+.cal-dot{width:5px;height:5px;border-radius:50%;background:currentColor;margin-top:3px;opacity:.85;}
+.cal-tooltip{
+  position:absolute;z-index:60;background:#1B2A28;color:#fff;border-radius:10px;padding:10px 14px;
+  font-size:12.5px;box-shadow:0 8px 24px rgba(0,0,0,0.28);min-width:190px;max-width:300px;pointer-events:none;
+}
+.cal-tooltip .tt-item{padding:5px 0;}
+.cal-tooltip .tt-item + .tt-item{border-top:1px solid rgba(255,255,255,0.14);}
+.cal-tooltip .tt-type{display:inline-block;border-radius:6px;padding:1px 8px;font-size:10.5px;font-weight:700;margin-inline-end:7px;}
+.tt-type.pay{background:var(--warning);}
+.tt-type.pay-paid{background:var(--success);}
+.tt-type.end{background:var(--danger);}
+
 .filters{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;}
 .filters input[type=text]{
   flex:1;min-width:200px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);
@@ -338,6 +381,23 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
     <div class="alert-card danger" id="alertOverdue" onclick="toggleAlertFilter('overdue')"><div><div class="num">0</div><div class="lbl">دفعات متأخرة</div></div></div>
     <div class="alert-card warning" id="alertDueSoon" onclick="toggleAlertFilter('due-soon')"><div><div class="num">0</div><div class="lbl">دفعات مستحقة قريبًا</div></div></div>
     <div class="alert-card info" id="alertEnding" onclick="toggleAlertFilter('ending')"><div><div class="num">0</div><div class="lbl">عقود تقترب من الانتهاء</div></div></div>
+  </div>
+
+  <div class="calendar-card" id="calendarCard">
+    <div class="calendar-head">
+      <div class="cal-nav">
+        <button class="cal-arrow" onclick="calShiftMonth(-1)" title="الشهر السابق">‹</button>
+        <div class="calendar-title">📅 تقويم الشهر <span id="calendarMonthLabel"></span></div>
+        <button class="cal-arrow" onclick="calShiftMonth(1)" title="الشهر التالي">›</button>
+      </div>
+      <div class="calendar-legend">
+        <span class="lg lg-paid">● مدفوعة</span>
+        <span class="lg lg-unpaid">● مستحقة</span>
+        <span class="lg lg-end">● انتهاء عقد</span>
+      </div>
+    </div>
+    <div id="calendar"></div>
+    <div class="cal-tooltip" id="calTooltip" style="display:none;"></div>
   </div>
 
   <div class="filters">
@@ -721,6 +781,8 @@ function render(){
 function renderList(){
   document.querySelector('.alerts-row').style.display = '';
   document.querySelector('.filters').style.display = '';
+  document.getElementById('calendarCard').style.display = '';
+  renderCalendar();
 
   const search = document.getElementById('searchInput').value.trim().toLowerCase();
   const statusFilterVal = document.getElementById('statusFilter').value;
@@ -808,9 +870,99 @@ function renderList(){
   }).join('');
 }
 
+// تقويم الشهر الحالي مع أيام الاستحقاق والانتهاء
+const CAL_MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const CAL_WEEKDAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+
+function calShiftMonth(delta){
+  calMonth += delta;
+  if(calMonth > 11){ calMonth = 0; calYear++; }
+  if(calMonth < 0){ calMonth = 11; calYear--; }
+  renderCalendar();
+}
+
+function renderCalendar(){
+  const cal = document.getElementById('calendar');
+  if(!cal) return;
+  const now = new Date();
+  const year = calYear, month = calMonth;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const offset = new Date(year, month, 1).getDay();
+  document.getElementById('calendarMonthLabel').textContent = CAL_MONTH_NAMES[month] + ' ' + year;
+
+  const dayData = {};
+  contracts.forEach(c => {
+    (c.payments || []).forEach(p => {
+      if(!p.date) return;
+      const d = new Date(p.date);
+      if(isNaN(d) || d.getFullYear() !== year || d.getMonth() !== month) return;
+      (dayData[d.getDate()] = dayData[d.getDate()] || []).push({
+        type:'payment', contractId:c.id, contractName:c.propertyName,
+        label:p.label, amount:p.amount, status:p.status
+      });
+    });
+    if(c.endDate){
+      const d = new Date(c.endDate);
+      if(!isNaN(d) && d.getFullYear() === year && d.getMonth() === month){
+        (dayData[d.getDate()] = dayData[d.getDate()] || []).push({
+          type:'end', contractId:c.id, contractName:c.propertyName
+        });
+      }
+    }
+  });
+
+  let html = `<div class="cal-head">${CAL_WEEKDAYS.map(w=>`<div>${w}</div>`).join('')}</div><div class="cal-grid">`;
+  for(let i=0;i<offset;i++) html += '<div class="cal-empty"></div>';
+  const today = now.getDate();
+
+  for(let day=1; day<=daysInMonth; day++){
+    const items = dayData[day] || [];
+    let cls = 'cal-day';
+    if(items.length){
+      if(items.some(i=>i.type==='end')) cls += ' day-end';
+      else if(items.some(i=>i.type==='payment' && i.status!=='paid')) cls += ' day-unpaid';
+      else cls += ' day-paid';
+    }
+    if(day===today) cls += ' day-today';
+    html += `<div class="${cls}" data-day="${day}" data-contract="${items.length ? items[0].contractId : ''}">${day}${items.length ? '<span class="cal-dot"></span>' : ''}</div>`;
+  }
+  html += '</div>';
+  cal.innerHTML = html;
+
+  const card = document.getElementById('calendarCard');
+  const tip = document.getElementById('calTooltip');
+
+  cal.querySelectorAll('.cal-day').forEach(cell => {
+    const items = dayData[cell.dataset.day] || [];
+    if(!items.length) return;
+    cell.addEventListener('mouseenter', () => {
+      tip.innerHTML = items.map(i => i.type === 'payment'
+        ? `<div class="tt-item"><span class="tt-type ${i.status==='paid'?'pay-paid':'pay'}">${i.status==='paid'?'مدفوعة':'دفعة'}</span><b>${escapeHtml(i.contractName)}</b><div style="color:#FFD54F;margin-top:2px;font-size:12px;">${escapeHtml(i.label||'')} · ${fmtMoney(i.amount||0)}</div></div>`
+        : `<div class="tt-item"><span class="tt-type end">انتهاء</span><b>${escapeHtml(i.contractName)}</b><div style="color:#FF9D8F;margin-top:2px;font-size:12px;">نهاية العقد</div></div>`
+      ).join('');
+      tip.style.display = 'block';
+      const rect = cell.getBoundingClientRect();
+      const cRect = card.getBoundingClientRect();
+      let x = rect.left - cRect.left + rect.width/2 - 95;
+      let y = rect.top - cRect.top + rect.height + 6;
+      x = Math.max(4, Math.min(x, card.clientWidth - 200));
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    });
+    cell.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    cell.addEventListener('click', () => {
+      const id = cell.dataset.contract;
+      if(id) navigateToContract(id);
+    });
+  });
+}
+
 function renderDetail(id){
   document.querySelector('.alerts-row').style.display = 'none';
   document.querySelector('.filters').style.display = 'none';
+  document.getElementById('calendarCard').style.display = 'none';
 
   const c = contracts.find(x=>x.id===id);
   if(!c){
