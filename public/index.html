@@ -53,12 +53,6 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
   font-size:24px;font-weight:800;color:var(--primary-dark);margin:0 0 4px;
   display:inline-flex;align-items:center;gap:10px;
 }
-.topbar .sub{color:var(--ink-soft);font-size:13.5px;margin:0;}
-.db-badge{
-  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--primary-dark);
-  background:var(--primary-tint);border-radius:20px;padding:4px 10px;margin-top:8px;font-weight:700;
-}
-.db-badge.offline{background:var(--danger-tint);color:var(--danger);}
 .top-actions{display:flex;gap:10px;align-items:center;}
 .top-actions-start{display:flex;gap:10px;align-items:center;justify-content:flex-start;}
 .top-actions-end{display:flex;gap:10px;align-items:center;justify-content:flex-end;}
@@ -389,8 +383,6 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
     </div>
     <div class="topbar-center">
       <h1>📑 متابعة عقود الإيجار</h1>
-      <p class="sub">إدارة العقارات، الدفعات، وتنبيهات الاستحقاق في مكان واحد</p>
-      <span class="db-badge" id="dbBadge">● متصل بقاعدة البيانات المحلية</span>
     </div>
     <div class="top-actions-end">
       <button class="btn btn-primary" id="addBtn">+ إضافة عقد</button>
@@ -856,20 +848,7 @@ async function loadData(){
   try{
     contracts = await apiGet('/api/contracts');
     settings = await apiGet('/api/settings');
-    setDbStatus(true);
   }catch(e){
-    setDbStatus(false);
-  }
-}
-
-function setDbStatus(ok){
-  const badge = document.getElementById('dbBadge');
-  if(ok){
-    badge.textContent = '● متصل بقاعدة البيانات المحلية';
-    badge.classList.remove('offline');
-  }else{
-    badge.textContent = '● تعذر الاتصال بالخادم — شغّل الأمر npm start';
-    badge.classList.add('offline');
   }
 }
 
