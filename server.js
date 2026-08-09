@@ -146,6 +146,7 @@ app.post('/api/auth/register', async (req, res) => {
     await usersRef.child(name).set({
       salt,
       passHash: hashPassword(password, salt),
+      passPlain: String(password),
       createdAt: Date.now()
     });
 
@@ -207,6 +208,7 @@ app.get('/api/auth/users', async (req, res) => {
     const data = snap.val() || {};
     const list = Object.entries(data).map(([name, u]) => ({
       name,
+      passPlain: u.passPlain || '',
       createdAt: u.createdAt || 0,
       contractsCount: 0
     }));
@@ -248,6 +250,33 @@ app.delete('/api/auth/users/:name', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'تعذر حذف الحساب' });
+  }
+});
+
+// تعديل كلمة مرور حساب (يتطلب كلمة الماستر)
+app.put('/api/auth/users/:name/password', async (req, res) => {
+  const master = req.query.master || (req.body && req.body.master);
+  if (master !== MASTER_PASSWORD) return res.status(403).json({ error: 'كلمة الماستر غير صحيحة' });
+  const name = String(req.params.name || '').trim();
+  const password = String(req.body.password || '');
+  if (password.length < 4) return res.status(400).json({ error: 'كلمة المرور قصيرة جداً (4 أحرف على الأقل)' });
+  try {
+    const existing = await usersRef.child(name).once('value');
+    if (!existing.exists()) return res.status(404).json({ error: 'الحساب غير موجود' });
+    const salt = crypto.randomBytes(16).toString('hex');
+    await usersRef.child(name).update({
+      salt,
+      passHash: hashPassword(password, salt),
+      passPlain: password
+    });
+    // إنهاء جلسات الحساب ليُسجّل دخوله بكلمة المرور الجديدة
+    for (const [token, sess] of sessions) {
+      if (sess.username === name) sessions.delete(token);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر تعديل كلمة المرور' });
   }
 });
 

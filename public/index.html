@@ -557,6 +557,22 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
   </div>
 </div>
 
+<div class="modal-overlay" id="passModalOverlay">
+  <div class="modal" style="max-width:400px;">
+    <h2>🔑 كلمة المرور</h2>
+    <p class="pdf-scan-hint" id="passModalUser"></p>
+    <div class="field">
+      <label>كلمة المرور</label>
+      <input type="text" id="passInput" placeholder="كلمة المرور">
+    </div>
+    <div id="passError" class="login-error" style="display:none;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="closePassBtn">إغلاق</button>
+      <button type="button" class="btn btn-primary" id="savePassBtn">حفظ</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="settingsModalOverlay">
   <div class="modal" style="max-width:420px;">
     <h2>الإعدادات</h2>
@@ -822,11 +838,19 @@ async function loadAccounts(){
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;background:var(--bg,#fff);border:1px solid var(--border,#ddd);border-radius:10px;';
       row.innerHTML = '<div><strong>' + u.name + '</strong><br><small style="color:#888;">عقود: ' + u.contractsCount + ' — سُجل: ' + new Date(u.createdAt).toLocaleDateString('ar-SA') + '</small></div>';
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:6px;';
+      const passBtn = document.createElement('button');
+      passBtn.className = 'btn btn-sm btn-ghost';
+      passBtn.textContent = '🔑 كلمة المرور';
+      passBtn.onclick = () => openPassModal(u.name, u.passPlain, master);
       const del = document.createElement('button');
       del.className = 'btn btn-sm btn-danger-ghost';
       del.textContent = 'حذف';
       del.onclick = () => deleteAccount(u.name, master, row);
-      row.appendChild(del);
+      actions.appendChild(passBtn);
+      actions.appendChild(del);
+      row.appendChild(actions);
       wrap.appendChild(row);
     });
     document.getElementById('accountsListWrap').style.display = 'block';
@@ -844,6 +868,37 @@ async function deleteAccount(name, master, rowEl){
     if(!document.getElementById('accountsList').children.length) document.getElementById('accountsListWrap').style.display = 'none';
   }catch(e){
     alert(e.message);
+  }
+}
+
+let passCtx = null;
+
+function openPassModal(name, currentPass, master){
+  passCtx = { name, master };
+  document.getElementById('passModalUser').textContent = 'الحساب: ' + name;
+  document.getElementById('passInput').value = currentPass || '';
+  document.getElementById('passError').style.display = 'none';
+  document.getElementById('passModalOverlay').classList.add('open');
+}
+
+function closePassModal(){
+  document.getElementById('passModalOverlay').classList.remove('open');
+  passCtx = null;
+}
+
+async function savePassword(){
+  if(!passCtx) return;
+  const ctx = passCtx;
+  const errEl = document.getElementById('passError');
+  const val = document.getElementById('passInput').value;
+  if(val.length < 4){ errEl.textContent = 'كلمة المرور قصيرة جداً (4 أحرف على الأقل)'; errEl.style.display = 'block'; return; }
+  try{
+    await apiSend('/api/auth/users/' + encodeURIComponent(ctx.name) + '/password?master=' + encodeURIComponent(ctx.master), 'PUT', { password: val });
+    closePassModal();
+    alert('تم تحديث كلمة المرور لحساب «' + ctx.name + '»');
+  }catch(e){
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
   }
 }
 
@@ -1596,6 +1651,9 @@ document.getElementById('accountsBtn').addEventListener('click', showAccounts);
 document.getElementById('closeAccountsBtn').addEventListener('click', ()=>{ document.getElementById('accountsModalOverlay').classList.remove('open'); });
 document.getElementById('loadAccountsBtn').addEventListener('click', loadAccounts);
 document.getElementById('accountsMaster').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') loadAccounts(); });
+document.getElementById('closePassBtn').addEventListener('click', closePassModal);
+document.getElementById('savePassBtn').addEventListener('click', savePassword);
+document.getElementById('passInput').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') savePassword(); });
 
 async function init(){
   const token = localStorage.getItem('token');
