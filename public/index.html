@@ -588,6 +588,7 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
 let contracts = [];
 let settings = { paymentAlertDays: 7, endAlertDays: 30 };
 let currentPayments = []; // { date, status, amount } — تُبنى منها الدفعات النهائية عند الحفظ
+let preservePaymentAmounts = false; // عندما تكون true تُحفظ مبالغ الدفعات كما قرأها الذكاء من PDF دون إعادة توزيعها
 
 const cardsContainer = document.getElementById('cardsContainer');
 const contractModalOverlay = document.getElementById('contractModalOverlay');
@@ -629,6 +630,7 @@ function computeAmounts(total, count){
 }
 
 function recalcAmounts(){
+  if(preservePaymentAmounts) return;
   const total = parseFloat(document.getElementById('totalValue').value) || 0;
   const amounts = computeAmounts(total, currentPayments.length);
   currentPayments.forEach((p, i) => { p.amount = amounts[i] || 0; });
@@ -1294,6 +1296,7 @@ async function deleteContract(id){
 function openAddModal(){
   document.getElementById('modalTitle').textContent = 'إضافة عقد جديد';
   contractForm.reset();
+  preservePaymentAmounts = false;
   document.getElementById('contractId').value = '';
   document.getElementById('tenantName').value = '';
   document.getElementById('tenantPhone').value = '';
@@ -1374,6 +1377,7 @@ document.getElementById('pdfFileInput').addEventListener('change', async (e) => 
         status: p.status || 'unpaid',
         amount: p.amount || 0
       }));
+      preservePaymentAmounts = true;
       document.getElementById('paymentCount').value = currentPayments.length;
       filledCount += currentPayments.length;
     }
@@ -1393,6 +1397,7 @@ document.getElementById('pdfFileInput').addEventListener('change', async (e) => 
 function openEditModal(id){
   const c = contracts.find(x=>x.id===id);
   if(!c) return;
+  preservePaymentAmounts = false;
   document.getElementById('modalTitle').textContent = 'تعديل العقد';
   document.getElementById('pdfScanSection').style.display = 'none';
   document.getElementById('pdfDivider').style.display = 'none';
@@ -1423,6 +1428,7 @@ function openRenewModal(id){
   const c = contracts.find(x=>x.id===id);
   if(!c) return;
   renewSourceId = id;
+  preservePaymentAmounts = false;
   document.getElementById('modalTitle').textContent = '🔄 تجديد العقد';
   document.getElementById('pdfScanSection').style.display = 'none';
   document.getElementById('pdfDivider').style.display = 'none';
@@ -1536,6 +1542,7 @@ contractForm.addEventListener('submit', async (e)=>{
 });
 
 document.getElementById('totalValue').addEventListener('input', ()=>{
+  preservePaymentAmounts = false;
   updateTaxPreview();
   recalcAmounts();
   renderPaymentsFields();
@@ -1544,8 +1551,8 @@ document.getElementById('taxRate').addEventListener('input', updateTaxPreview);
 document.getElementById('hasTaxCheck').addEventListener('change', toggleTaxField);
 document.getElementById('addBtn').addEventListener('click', openAddModal);
 
-document.getElementById('paymentFrequency').addEventListener('change', applyPaymentCount);
-document.getElementById('paymentCount').addEventListener('input', applyPaymentCount);
+document.getElementById('paymentFrequency').addEventListener('change', ()=>{ preservePaymentAmounts = false; applyPaymentCount(); });
+document.getElementById('paymentCount').addEventListener('input', ()=>{ preservePaymentAmounts = false; applyPaymentCount(); });
 document.getElementById('startDate').addEventListener('change', ()=>{
   if(document.getElementById('paymentFrequency').value !== 'custom') applyPaymentCount();
 });
