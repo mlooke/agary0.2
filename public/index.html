@@ -525,13 +525,9 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
       <label>كلمة المرور</label>
       <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <div class="field" id="masterField" style="display:none;">
-      <label>كلمة الماستر</label>
-      <input type="password" id="loginMaster" placeholder="مطلوبة عند إنشاء حساب فقط">
-    </div>
     <div id="loginError" class="login-error" style="display:none;"></div>
     <div class="modal-actions">
-      <button type="button" class="btn btn-ghost" id="loginToggleBtn"></button>
+      <button type="button" class="btn btn-ghost" id="loginToggleBtn" style="display:none;"></button>
       <button type="button" class="btn btn-primary" id="loginSubmitBtn">دخول</button>
     </div>
   </div>
@@ -540,19 +536,34 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
 <div class="modal-overlay" id="accountsModalOverlay">
   <div class="modal" style="max-width:520px;">
     <h2>👥 إدارة الحسابات</h2>
-    <p class="pdf-scan-hint">هذه الصفحة لصاحب النظام فقط — أدخل كلمة الماستر لعرض الحسابات وحذفها</p>
-    <div class="field">
-      <label>كلمة الماستر</label>
-      <input type="password" id="accountsMaster" placeholder="كلمة الماستر">
-    </div>
-    <div class="field" id="accountsListWrap" style="display:none;">
+    <p class="pdf-scan-hint">هذه الصفحة للمدير فقط — عرض الحسابات وكلمات المرور، حذفها، أو إنشاء حسابات جديدة</p>
+    <div class="field" id="accountsListWrap">
       <label>الحسابات المسجلة</label>
-      <div id="accountsList" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;"></div>
+      <div id="accountsList" style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;margin-bottom:10px;"></div>
+      <button type="button" class="btn btn-primary" id="newAccountBtn">＋ إنشاء حساب جديد</button>
     </div>
     <div id="accountsError" class="login-error" style="display:none;"></div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" id="closeAccountsBtn">إغلاق</button>
-      <button type="button" class="btn btn-primary" id="loadAccountsBtn">عرض الحسابات</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="newAccountModalOverlay">
+  <div class="modal" style="max-width:400px;">
+    <h2>＋ إنشاء حساب جديد</h2>
+    <div class="field">
+      <label>اسم المستخدم</label>
+      <input type="text" id="newAccountUsername" placeholder="مثال: شركة-أ">
+    </div>
+    <div class="field">
+      <label>كلمة المرور</label>
+      <input type="text" id="newAccountPassword" placeholder="4 أحرف على الأقل">
+    </div>
+    <div id="newAccountError" class="login-error" style="display:none;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="closeNewAccountBtn">إلغاء</button>
+      <button type="button" class="btn btn-primary" id="saveNewAccountBtn">إنشاء</button>
     </div>
   </div>
 </div>
@@ -745,15 +756,12 @@ async function apiSend(url, method, body){
 }
 
 let currentUser = '';
-let loginMode = 'login'; // login | register
+let isAdmin = false;
+let adminExists = false;
+let loginMode = 'login'; // login | setup
 
-function showLogin(){
-  loginMode = 'login';
-  document.getElementById('loginTitle').textContent = 'تسجيل الدخول';
-  document.getElementById('loginHint').textContent = 'أدخل بياناتك للوصول إلى عقودك';
-  document.getElementById('masterField').style.display = 'none';
-  document.getElementById('loginToggleBtn').textContent = 'إنشاء حساب جديد';
-  document.getElementById('loginSubmitBtn').textContent = 'دخول';
+async function showLogin(){
+  document.getElementById('loginToggleBtn').style.display = 'none';
   document.getElementById('loginError').style.display = 'none';
   document.getElementById('loginModalOverlay').classList.add('open');
   document.querySelector('.alerts-row').style.display = 'none';
@@ -761,42 +769,47 @@ function showLogin(){
   document.getElementById('calendarCard').style.display = 'none';
   document.getElementById('cardsContainer').innerHTML = '';
   document.getElementById('accountsBtn').style.display = 'none';
+  try{
+    const st = await apiGet('/api/auth/status');
+    adminExists = !!st.hasAdmin;
+  }catch(e){
+    adminExists = true;
+  }
+  if(adminExists){
+    loginMode = 'login';
+    document.getElementById('loginTitle').textContent = 'تسجيل الدخول';
+    document.getElementById('loginHint').textContent = 'أدخل بياناتك للوصول إلى عقودك';
+    document.getElementById('loginSubmitBtn').textContent = 'دخول';
+  }else{
+    loginMode = 'setup';
+    document.getElementById('loginTitle').textContent = '👑 إنشاء حساب المدير';
+    document.getElementById('loginHint').textContent = 'أول حساب يُنشأ يصبح المدير ويدير الحسابات كلها';
+    document.getElementById('loginSubmitBtn').textContent = 'إنشاء حساب المدير';
+  }
 }
 function hideLogin(){
   document.getElementById('loginModalOverlay').classList.remove('open');
 }
 
-function toggleLoginMode(){
-  loginMode = loginMode === 'login' ? 'register' : 'login';
-  document.getElementById('loginTitle').textContent = loginMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد';
-  document.getElementById('loginHint').textContent = loginMode === 'login'
-    ? 'أدخل بياناتك للوصول إلى عقودك'
-    : 'أنشئ حساباً جديداً — كلمة الماستر مطلوبة فقط هنا';
-  document.getElementById('masterField').style.display = loginMode === 'register' ? '' : 'none';
-  document.getElementById('loginToggleBtn').textContent = loginMode === 'login' ? 'إنشاء حساب جديد' : 'لدي حساب بالفعل';
-  document.getElementById('loginSubmitBtn').textContent = loginMode === 'login' ? 'دخول' : 'إنشاء حساب';
-  document.getElementById('loginError').style.display = 'none';
-}
-
 async function submitLogin(){
   const username = document.getElementById('loginUsername').value.trim();
   const password = document.getElementById('loginPassword').value;
-  const master = document.getElementById('loginMaster').value;
   const errEl = document.getElementById('loginError');
 
   try{
-    const url = loginMode === 'login' ? '/api/auth/login' : '/api/auth/register';
-    const body = loginMode === 'login' ? { username, password } : { username, password, master };
+    const url = loginMode === 'login' ? '/api/auth/login' : '/api/auth/setup';
+    const body = { username, password };
     const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(data.error || 'فشل العملية');
 
     localStorage.setItem('token', data.token);
     currentUser = data.username;
-    document.getElementById('userBadge').textContent = '👤 ' + data.username;
+    isAdmin = !!data.isAdmin;
+    document.getElementById('userBadge').textContent = (isAdmin ? '👑 ' : '👤 ') + data.username;
     document.getElementById('userBadge').style.display = '';
     document.getElementById('logoutBtn').style.display = '';
-    document.getElementById('accountsBtn').style.display = '';
+    document.getElementById('accountsBtn').style.display = isAdmin ? '' : 'none';
     hideLogin();
     await loadData();
     render();
@@ -817,55 +830,52 @@ function logout(){
   showLogin();
 }
 
-// --- إدارة الحسابات (تتطلب كلمة الماستر) ---
+// --- إدارة الحسابات (للمدير فقط) ---
 function showAccounts(){
-  document.getElementById('accountsMaster').value = '';
-  document.getElementById('accountsListWrap').style.display = 'none';
   document.getElementById('accountsError').style.display = 'none';
   document.getElementById('accountsModalOverlay').classList.add('open');
   settingsModalOverlay.classList.remove('open');
+  loadAccounts();
 }
 
 async function loadAccounts(){
-  const master = document.getElementById('accountsMaster').value;
   const errEl = document.getElementById('accountsError');
-  if(!master){ errEl.textContent = 'أدخل كلمة الماستر أولاً'; errEl.style.display = 'block'; return; }
   try{
-    const list = await apiGet('/api/auth/users?master=' + encodeURIComponent(master));
+    const list = await apiGet('/api/auth/users');
     const wrap = document.getElementById('accountsList');
     wrap.innerHTML = '';
     list.forEach((u) => {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;background:var(--bg,#fff);border:1px solid var(--border,#ddd);border-radius:10px;';
-      row.innerHTML = '<div><strong>' + u.name + '</strong><br><small style="color:#888;">عقود: ' + u.contractsCount + ' — سُجل: ' + new Date(u.createdAt).toLocaleDateString('ar-SA') + '</small></div>';
+      row.innerHTML = '<div><strong>' + (u.isAdmin ? '👑 ' : '') + u.name + '</strong><br><small style="color:#888;">عقود: ' + u.contractsCount + ' — سُجل: ' + new Date(u.createdAt).toLocaleDateString('ar-SA') + '</small></div>';
       const actions = document.createElement('div');
       actions.style.cssText = 'display:flex;gap:6px;';
       const passBtn = document.createElement('button');
       passBtn.className = 'btn btn-sm btn-ghost';
       passBtn.textContent = '🔑 كلمة المرور';
-      passBtn.onclick = () => openPassModal(u.name, u.passPlain, master);
-      const del = document.createElement('button');
-      del.className = 'btn btn-sm btn-danger-ghost';
-      del.textContent = 'حذف';
-      del.onclick = () => deleteAccount(u.name, master, row);
+      passBtn.onclick = () => openPassModal(u.name, u.passPlain);
       actions.appendChild(passBtn);
-      actions.appendChild(del);
+      if(!u.isAdmin){
+        const del = document.createElement('button');
+        del.className = 'btn btn-sm btn-danger-ghost';
+        del.textContent = 'حذف';
+        del.onclick = () => deleteAccount(u.name, row);
+        actions.appendChild(del);
+      }
       row.appendChild(actions);
       wrap.appendChild(row);
     });
-    document.getElementById('accountsListWrap').style.display = 'block';
   }catch(e){
     errEl.textContent = e.message;
     errEl.style.display = 'block';
   }
 }
 
-async function deleteAccount(name, master, rowEl){
-  if(!confirm('حذف حساب «' + name + '»؟ عقوده ستصبح بدون مالك وسيستلمها أول حساب يُسجَّل جديد.')) return;
+async function deleteAccount(name, rowEl){
+  if(!confirm('حذف حساب «' + name + '»؟ عقوده ستنتقل إلى حساب المدير.')) return;
   try{
-    await apiSend('/api/auth/users/' + encodeURIComponent(name) + '?master=' + encodeURIComponent(master), 'DELETE', {});
+    await apiSend('/api/auth/users/' + encodeURIComponent(name), 'DELETE', {});
     rowEl.remove();
-    if(!document.getElementById('accountsList').children.length) document.getElementById('accountsListWrap').style.display = 'none';
   }catch(e){
     alert(e.message);
   }
@@ -873,8 +883,8 @@ async function deleteAccount(name, master, rowEl){
 
 let passCtx = null;
 
-function openPassModal(name, currentPass, master){
-  passCtx = { name, master };
+function openPassModal(name, currentPass){
+  passCtx = { name };
   document.getElementById('passModalUser').textContent = 'الحساب: ' + name;
   document.getElementById('passInput').value = currentPass || '';
   document.getElementById('passError').style.display = 'none';
@@ -893,9 +903,34 @@ async function savePassword(){
   const val = document.getElementById('passInput').value;
   if(val.length < 4){ errEl.textContent = 'كلمة المرور قصيرة جداً (4 أحرف على الأقل)'; errEl.style.display = 'block'; return; }
   try{
-    await apiSend('/api/auth/users/' + encodeURIComponent(ctx.name) + '/password?master=' + encodeURIComponent(ctx.master), 'PUT', { password: val });
+    await apiSend('/api/auth/users/' + encodeURIComponent(ctx.name) + '/password', 'PUT', { password: val });
     closePassModal();
     alert('تم تحديث كلمة المرور لحساب «' + ctx.name + '»');
+  }catch(e){
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function openNewAccountModal(){
+  document.getElementById('newAccountUsername').value = '';
+  document.getElementById('newAccountPassword').value = '';
+  document.getElementById('newAccountError').style.display = 'none';
+  document.getElementById('newAccountModalOverlay').classList.add('open');
+}
+
+function closeNewAccountModal(){
+  document.getElementById('newAccountModalOverlay').classList.remove('open');
+}
+
+async function saveNewAccount(){
+  const errEl = document.getElementById('newAccountError');
+  const username = document.getElementById('newAccountUsername').value.trim();
+  const password = document.getElementById('newAccountPassword').value;
+  try{
+    await apiSend('/api/auth/register', 'POST', { username, password });
+    closeNewAccountModal();
+    await loadAccounts();
   }catch(e){
     errEl.textContent = e.message;
     errEl.style.display = 'block';
@@ -1640,17 +1675,18 @@ document.getElementById('statusFilter').addEventListener('change', render);
 window.addEventListener('hashchange', render);
 
 // --- أحداث نافذة الدخول ---
-document.getElementById('loginToggleBtn').addEventListener('click', toggleLoginMode);
 document.getElementById('loginSubmitBtn').addEventListener('click', submitLogin);
 document.getElementById('loginPassword').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') submitLogin(); });
-document.getElementById('loginMaster').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') submitLogin(); });
+document.getElementById('loginUsername').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') submitLogin(); });
 document.getElementById('logoutBtn').addEventListener('click', logout);
 
 // --- أحداث نافذة إدارة الحسابات ---
 document.getElementById('accountsBtn').addEventListener('click', showAccounts);
 document.getElementById('closeAccountsBtn').addEventListener('click', ()=>{ document.getElementById('accountsModalOverlay').classList.remove('open'); });
-document.getElementById('loadAccountsBtn').addEventListener('click', loadAccounts);
-document.getElementById('accountsMaster').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') loadAccounts(); });
+document.getElementById('newAccountBtn').addEventListener('click', openNewAccountModal);
+document.getElementById('closeNewAccountBtn').addEventListener('click', closeNewAccountModal);
+document.getElementById('saveNewAccountBtn').addEventListener('click', saveNewAccount);
+document.getElementById('newAccountPassword').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') saveNewAccount(); });
 document.getElementById('closePassBtn').addEventListener('click', closePassModal);
 document.getElementById('savePassBtn').addEventListener('click', savePassword);
 document.getElementById('passInput').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') savePassword(); });
@@ -1661,10 +1697,11 @@ async function init(){
     try{
       const me = await apiGet('/api/auth/me');
       currentUser = me.username;
-      document.getElementById('userBadge').textContent = '👤 ' + currentUser;
+      isAdmin = !!me.isAdmin;
+      document.getElementById('userBadge').textContent = (isAdmin ? '👑 ' : '👤 ') + currentUser;
       document.getElementById('userBadge').style.display = '';
       document.getElementById('logoutBtn').style.display = '';
-      document.getElementById('accountsBtn').style.display = '';
+      document.getElementById('accountsBtn').style.display = isAdmin ? '' : 'none';
       await loadData();
       render();
       return;

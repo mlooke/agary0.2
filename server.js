@@ -10,7 +10,6 @@ const admin = require('firebase-admin');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'sk-a9e3ac1277034e26922d521ae1315da2';
-const MASTER_PASSWORD = process.env.MASTER_PASSWORD || 'agary-master-2026';
 
 // --- إعداد Firebase (قاعدة بيانات سحابية مشتركة) ---
 // الأولوية: متغير بيئة FIREBASE_SERVICE_ACCOUNT (للاستضافة السحابية) ثم ملف serviceAccountKey.json (محلياً)
@@ -34,9 +33,10 @@ const rtdb = admin.database();
 const contractsRef = rtdb.ref('contracts');
 const settingsRef = rtdb.ref('settings');
 const usersRef = rtdb.ref('users');
+const adminRef = rtdb.ref('admin');
 
 // --- نظام الحسابات (جلسات في الذاكرة) ---
-const sessions = new Map(); // token -> username
+const sessions = new Map(); // token -> { username, role, expires }
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 يوم
 
 function hashPassword(password, salt) {
@@ -47,9 +47,9 @@ function randomToken() {
   return crypto.randomBytes(24).toString('hex');
 }
 
-function newSessionToken(username) {
+function newSessionToken(username, role) {
   const token = randomToken();
-  sessions.set(token, { username, expires: Date.now() + SESSION_TTL_MS });
+  sessions.set(token, { username, role: role || 'user', expires: Date.now() + SESSION_TTL_MS });
   return token;
 }
 
@@ -64,7 +64,16 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'انتهت الجلسة، سجّل الدخول مجدداً' });
   }
   req.user = sess.username;
+  req.isAdmin = sess.role === 'admin';
   next();
+}
+
+// وسيط يمنع الوصول لمسارات الإدارة إلا للمدير فقط
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (!req.isAdmin) return res.status(403).json({ error: 'غير مصرح — هذا الإجراء للمدير فقط' });
+    next();
+  });
 }
 
 // --- إعداد مجلد PDF ---
@@ -130,14 +139,13 @@ function newId() {
 
 // --- مسارات المصادقة ---
 
-// إنشاء حساب جديد (يتطلب كلمة الماستر)
-app.post('/api/auth/register', async (req, res) => {
-  const { username, password, master } = req.body;
+// إنشاء حساب جديد (يتطلب جلسة مدير)
+app.post('/api/auth/register', requireAdmin, async (req, res) => {
+  const { username, password } = req.body;
   try {
     const name = String(username || '').trim();
     if (name.length < 3) return res.status(400).json({ error: 'اسم المستخدم قصير جداً (3 أحرف على الأقل)' });
     if (!password || String(password).length < 4) return res.status(400).json({ error: 'كلمة المرور قصيرة جداً (4 أحرف على الأقل)' });
-    if (master !== MASTER_PASSWORD) return res.status(403).json({ error: 'كلمة الماستر غير صحيحة' });
 
     const existing = await usersRef.child(name).once('value');
     if (existing.exists()) return res.status(409).json({ error: 'اسم المستخدم موجود مسبقاً' });
@@ -149,23 +157,46 @@ app.post('/api/auth/register', async (req, res) => {
       passPlain: String(password),
       createdAt: Date.now()
     });
-
-    // أول حساب يُنشأ يستلم العقود القديمة التي لا تملك مالكاً
-    const usersSnap = await usersRef.once('value');
-    if (usersSnap.numChildren() === 1) {
-      const contractsSnap = await contractsRef.once('value');
-      const all = contractsSnap.val() || {};
-      const updates = {};
-      Object.entries(all).forEach(([id, c]) => {
-        if (!c.owner) updates[id] = { ...c, owner: name };
-      });
-      if (Object.keys(updates).length) await contractsRef.update(updates);
-    }
-
-    res.status(201).json({ token: newSessionToken(name), username: name });
+    res.status(201).json({ ok: true, username: name });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'تعذر إنشاء الحساب' });
+  }
+});
+
+// إنشاء حساب المدير (يُستخدم مرة واحدة فقط عند أول تشغيل)
+app.post('/api/auth/setup', async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const name = String(username || '').trim();
+    if (name.length < 3) return res.status(400).json({ error: 'اسم المستخدم قصير جداً (3 أحرف على الأقل)' });
+    if (!password || String(password).length < 4) return res.status(400).json({ error: 'كلمة المرور قصيرة جداً (4 أحرف على الأقل)' });
+
+    const adminSnap = await adminRef.once('value');
+    if (adminSnap.exists()) return res.status(403).json({ error: 'حساب المدير موجود مسبقاً' });
+
+    const salt = crypto.randomBytes(16).toString('hex');
+    await adminRef.set({
+      username: name,
+      salt,
+      passHash: hashPassword(password, salt),
+      passPlain: String(password),
+      createdAt: Date.now()
+    });
+
+    // أول حساب (المدير) يستلم العقود القديمة التي لا تملك مالكاً
+    const contractsSnap = await contractsRef.once('value');
+    const all = contractsSnap.val() || {};
+    const updates = {};
+    Object.entries(all).forEach(([id, c]) => {
+      if (!c.owner) updates[id] = { ...c, owner: name };
+    });
+    if (Object.keys(updates).length) await contractsRef.update(updates);
+
+    res.status(201).json({ token: newSessionToken(name, 'admin'), username: name, isAdmin: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر إنشاء حساب المدير' });
   }
 });
 
@@ -174,12 +205,22 @@ app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   try {
     const name = String(username || '').trim();
+    // دخول المدير
+    const adminSnap = await adminRef.once('value');
+    const adminAcc = adminSnap.val();
+    if (adminAcc && name === adminAcc.username) {
+      if (hashPassword(password || '', adminAcc.salt) !== adminAcc.passHash) {
+        return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+      }
+      return res.json({ token: newSessionToken(name, 'admin'), username: name, isAdmin: true });
+    }
+    // دخول مستخدم عادي
     const snap = await usersRef.child(name).once('value');
     const user = snap.val();
     if (!user || hashPassword(password || '', user.salt) !== user.passHash) {
       return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
     }
-    res.json({ token: newSessionToken(name), username: name });
+    res.json({ token: newSessionToken(name, 'user'), username: name, isAdmin: false });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'تعذر تسجيل الدخول' });
@@ -195,23 +236,35 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
 
 // التحقق من الجلسة الحالية
 app.get('/api/auth/me', requireAuth, (req, res) => {
-  res.json({ username: req.user });
+  res.json({ username: req.user, isAdmin: req.isAdmin });
 });
 
-// إدارة الحسابات (تتطلب كلمة الماستر) — مخصصة لصاحب النظام فقط
-
-// جلب قائمة الحسابات (بدون كلمات المرور)
-app.get('/api/auth/users', async (req, res) => {
-  if (req.query.master !== MASTER_PASSWORD) return res.status(403).json({ error: 'كلمة الماستر غير صحيحة' });
+// حالة النظام: هل يوجد حساب مدير؟
+app.get('/api/auth/status', async (req, res) => {
   try {
+    const adminSnap = await adminRef.once('value');
+    res.json({ hasAdmin: adminSnap.exists() });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر جلب الحالة' });
+  }
+});
+
+// إدارة الحسابات (للمدير فقط)
+
+// جلب قائمة الحسابات (للمدير فقط)
+app.get('/api/auth/users', requireAdmin, async (req, res) => {
+  try {
+    const adminAcc = (await adminRef.once('value')).val() || {};
+    const list = [];
+    if (adminAcc.username) {
+      list.push({ name: adminAcc.username, passPlain: adminAcc.passPlain || '', createdAt: adminAcc.createdAt || 0, contractsCount: 0, isAdmin: true });
+    }
     const snap = await usersRef.once('value');
     const data = snap.val() || {};
-    const list = Object.entries(data).map(([name, u]) => ({
-      name,
-      passPlain: u.passPlain || '',
-      createdAt: u.createdAt || 0,
-      contractsCount: 0
-    }));
+    Object.entries(data).forEach(([name, u]) => {
+      list.push({ name, passPlain: u.passPlain || '', createdAt: u.createdAt || 0, contractsCount: 0, isAdmin: false });
+    });
     const contractsSnap = await contractsRef.once('value');
     const contracts = contractsSnap.val() || {};
     list.forEach((u) => {
@@ -225,20 +278,20 @@ app.get('/api/auth/users', async (req, res) => {
   }
 });
 
-// حذف حساب
-app.delete('/api/auth/users/:name', async (req, res) => {
-  const master = req.query.master || (req.body && req.body.master);
-  if (master !== MASTER_PASSWORD) return res.status(403).json({ error: 'كلمة الماستر غير صحيحة' });
+// حذف حساب (للمدير فقط)
+app.delete('/api/auth/users/:name', requireAdmin, async (req, res) => {
   const name = String(req.params.name || '').trim();
   try {
     const existing = await usersRef.child(name).once('value');
     if (!existing.exists()) return res.status(404).json({ error: 'الحساب غير موجود' });
-    // العقود التي يملكها الحساب تصبح بدون مالك حتى يستلمها حساب آخر
+    const adminAcc = (await adminRef.once('value')).val();
+    if (adminAcc && name === adminAcc.username) return res.status(400).json({ error: 'لا يمكن حذف حساب المدير' });
+    // عقود الحساب المحذوف تنتقل إلى المدير حتى لا تختفي
     const contractsSnap = await contractsRef.once('value');
     const contracts = contractsSnap.val() || {};
     const updates = {};
     Object.entries(contracts).forEach(([id, c]) => {
-      if (c.owner === name) updates[id] = { ...c, owner: '' };
+      if (c.owner === name) updates[id] = { ...c, owner: adminAcc && adminAcc.username ? adminAcc.username : '' };
     });
     if (Object.keys(updates).length) await contractsRef.update(updates);
     await usersRef.child(name).remove();
@@ -253,25 +306,25 @@ app.delete('/api/auth/users/:name', async (req, res) => {
   }
 });
 
-// تعديل كلمة مرور حساب (يتطلب كلمة الماستر)
-app.put('/api/auth/users/:name/password', async (req, res) => {
-  const master = req.query.master || (req.body && req.body.master);
-  if (master !== MASTER_PASSWORD) return res.status(403).json({ error: 'كلمة الماستر غير صحيحة' });
+// تعديل كلمة مرور حساب (للمدير فقط)
+app.put('/api/auth/users/:name/password', requireAdmin, async (req, res) => {
   const name = String(req.params.name || '').trim();
   const password = String(req.body.password || '');
   if (password.length < 4) return res.status(400).json({ error: 'كلمة المرور قصيرة جداً (4 أحرف على الأقل)' });
   try {
-    const existing = await usersRef.child(name).once('value');
-    if (!existing.exists()) return res.status(404).json({ error: 'الحساب غير موجود' });
     const salt = crypto.randomBytes(16).toString('hex');
-    await usersRef.child(name).update({
-      salt,
-      passHash: hashPassword(password, salt),
-      passPlain: password
-    });
-    // إنهاء جلسات الحساب ليُسجّل دخوله بكلمة المرور الجديدة
+    const adminAcc = (await adminRef.once('value')).val() || {};
+    if (adminAcc.username && name === adminAcc.username) {
+      await adminRef.update({ salt, passHash: hashPassword(password, salt), passPlain: password });
+    } else {
+      const existing = await usersRef.child(name).once('value');
+      if (!existing.exists()) return res.status(404).json({ error: 'الحساب غير موجود' });
+      await usersRef.child(name).update({ salt, passHash: hashPassword(password, salt), passPlain: password });
+    }
+    // إنهاء جلسات الحساب الأخرى ليُسجّل دخوله بكلمة المرور الجديدة
+    const currentToken = (req.headers.authorization || '').slice(7);
     for (const [token, sess] of sessions) {
-      if (sess.username === name) sessions.delete(token);
+      if (sess.username === name && token !== currentToken) sessions.delete(token);
     }
     res.json({ ok: true });
   } catch (err) {
