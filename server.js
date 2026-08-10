@@ -494,6 +494,7 @@ app.post('/api/contracts/scan-pdf', requireAuth, upload.single('pdf'), async (re
     // محاولة الاستخراج بالذكاء الاصطناعي
     try {
       const extracted = await callDeepSeek(text);
+      applyPropertyNameRule(extracted);
       return res.json({
         filename: req.file.filename,
         filepath: `/pdf/${req.file.filename}`,
@@ -506,6 +507,7 @@ app.post('/api/contracts/scan-pdf', requireAuth, upload.single('pdf'), async (re
 
     // fallback محلي
     const extracted = extractContractData(text);
+    applyPropertyNameRule(extracted);
     res.json({
       filename: req.file.filename,
       filepath: `/pdf/${req.file.filename}`,
@@ -517,6 +519,12 @@ app.post('/api/contracts/scan-pdf', requireAuth, upload.single('pdf'), async (re
     res.status(500).json({ error: 'تعذر قراءة ملف PDF' });
   }
 });
+
+// اسم العقار يُجعل مطابقاً لاسم المستأجر تلقائياً بعد الاستخراج
+function applyPropertyNameRule(extracted) {
+  if (extracted && extracted.tenantName) extracted.propertyName = extracted.tenantName;
+  return extracted;
+}
 
 // استخراج بيانات العقد من النص المستخرج من PDF
 function extractContractData(text) {
