@@ -10,6 +10,7 @@ const admin = require('firebase-admin');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
+const WA_VERIFY_TOKEN = process.env.WA_VERIFY_TOKEN || '';
 
 // --- إعداد Firebase (قاعدة بيانات سحابية مشتركة) ---
 // الأولوية: متغير بيئة FIREBASE_SERVICE_ACCOUNT (للاستضافة السحابية) ثم ملف serviceAccountKey.json (محلياً)
@@ -1007,6 +1008,30 @@ ${text}`;
     req.end();
   });
 }
+
+app.get('/webhook/whatsapp', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  if (mode === 'subscribe' && token === WA_VERIFY_TOKEN) return res.status(200).send(challenge);
+  res.sendStatus(403);
+});
+
+app.post('/webhook/whatsapp', (req, res) => {
+  const entry = req.body && req.body.entry;
+  if (entry && entry[0] && entry[0].changes) {
+    entry[0].changes.forEach((ch) => {
+      const v = ch.value || {};
+      (v.statuses || []).forEach((s) => {
+        console.log('[WA] رسالة ' + s.id + ' → ' + s.status + ' (' + s.recipient_id + ')');
+      });
+      (v.messages || []).forEach((m) => {
+        console.log('[WA] واردة من ' + m.from + ': ' + (m.text ? m.text.body : 'غير نصية'));
+      });
+    });
+  }
+  res.sendStatus(200);
+});
 
 app.listen(PORT, () => {
   console.log(`✅ الخادم يعمل على http://localhost:${PORT}`);
