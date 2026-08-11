@@ -31,6 +31,30 @@
   --shadow: 0 1px 2px rgba(27,42,40,0.04), 0 6px 20px rgba(27,42,40,0.06);
 }
 
+html[data-theme="dark"]{
+  --bg:#0F1615;
+  --surface:#1A2321;
+  --surface-alt:#141C1A;
+  --ink:#E9F0ED;
+  --ink-soft:#A9B8B2;
+  --ink-faint:#7E8D88;
+  --primary:#2E9E86;
+  --primary-dark:#5ABFA9;
+  --primary-tint:#16312B;
+  --gold:#D9A441;
+  --gold-tint:#332A15;
+  --success:#5FBE7D;
+  --success-tint:#17301F;
+  --warning:#E0A24E;
+  --warning-tint:#4A3315;
+  --danger:#E06A58;
+  --danger-tint:#3B1E19;
+  --gray:#7E8D88;
+  --gray-tint:#232E2B;
+  --border:#2A3733;
+  --shadow: 0 1px 2px rgba(0,0,0,0.25), 0 6px 20px rgba(0,0,0,0.35);
+}
+
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{
@@ -133,6 +157,7 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
   position:absolute;z-index:60;background:#1B2A28;color:#fff;border-radius:10px;padding:10px 14px;
   font-size:12.5px;box-shadow:0 8px 24px rgba(0,0,0,0.28);min-width:190px;max-width:300px;pointer-events:none;
 }
+html[data-theme="dark"] .cal-tooltip{background:#0D1211;border:1px solid var(--border);}
 .cal-tooltip .tt-item{padding:5px 0;}
 .cal-tooltip .tt-item + .tt-item{border-top:1px solid rgba(255,255,255,0.14);}
 .cal-tooltip .tt-type{display:inline-block;border-radius:6px;padding:1px 8px;font-size:10.5px;font-weight:700;margin-inline-end:7px;}
@@ -246,6 +271,7 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
   white-space:nowrap;font-family:'Tajawal',sans-serif;
 }
 .wa-btn:hover{filter:brightness(0.96);}
+html[data-theme="dark"] .wa-btn{background:#123525;color:#7FDC9F;border-color:#2E6B4A;}
 
 .pay-popup{
   position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
@@ -330,6 +356,7 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
   margin-bottom:14px;
   text-align:center;
 }
+html[data-theme="dark"] .pdf-scan-section{background:linear-gradient(135deg, #14241f 0%, #10211b 100%);}
 .pdf-scan-label{
   font-family:'Cairo',sans-serif;
   font-weight:800;
@@ -383,6 +410,109 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
   border:none;
   border-top:1px solid var(--border);
   margin:10px 0 16px;
+}
+
+/* --- المساعد الشخصي الذكي --- */
+.assist-fab{
+  position:fixed;bottom:22px;left:22px;z-index:70;
+  display:inline-flex;align-items:center;gap:9px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+  color:#fff;border:none;border-radius:50px;padding:12px 20px 12px 18px;
+  font-family:'Cairo',sans-serif;font-weight:800;font-size:14.5px;cursor:pointer;
+  box-shadow:0 10px 30px rgba(15,110,92,0.35);
+  transition:transform .15s ease, box-shadow .15s ease;
+}
+.assist-fab:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(15,110,92,0.45);}
+.assist-fab:active{transform:scale(0.97);}
+.assist-fab .fab-icon{
+  width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.2);
+  display:inline-flex;align-items:center;justify-content:center;font-size:16px;
+  overflow:hidden;
+}
+.assist-fab .fab-icon img{width:100%;height:100%;object-fit:contain;}
+html[data-theme="dark"] .assist-fab{background:linear-gradient(135deg,#1E6B58,#0E4A3C);}
+
+.assist-panel{
+  position:fixed;bottom:90px;left:22px;z-index:70;
+  width:380px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 130px);
+  background:var(--surface);border:1px solid var(--border);border-radius:18px;
+  box-shadow:0 24px 60px rgba(0,0,0,0.25);
+  display:none;flex-direction:column;overflow:hidden;
+}
+.assist-panel.open{display:flex;}
+.assist-head{
+  display:flex;align-items:center;gap:10px;padding:14px 16px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+  color:#fff;flex-shrink:0;
+}
+.assist-head .avatar{
+  width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.2);
+  display:flex;align-items:center;justify-content:center;font-size:19px;
+  overflow:hidden;
+}
+.assist-head .avatar img{width:100%;height:100%;object-fit:contain;}
+.assist-head .titles{flex:1;min-width:0;}
+.assist-head .titles b{display:block;font-family:'Cairo',sans-serif;font-size:15px;line-height:1.3;}
+.assist-head .titles span{display:block;font-size:11px;opacity:0.85;}
+.assist-close{
+  background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;
+  padding:4px;opacity:0.85;
+}
+.assist-close:hover{opacity:1;}
+.assist-body{
+  flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;
+  background:var(--bg);
+}
+.assist-msg{max-width:88%;padding:10px 14px;border-radius:14px;font-size:13.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;}
+.assist-msg.bot{align-self:flex-start;background:var(--surface);border:1px solid var(--border);border-start-start-radius:4px;color:var(--ink);}
+.assist-msg.user{align-self:flex-end;background:var(--primary);color:#fff;border-end-end-radius:4px;}
+.assist-msg.error{background:var(--danger-tint);color:var(--danger);border:1px solid var(--danger);}
+.assist-typing{align-self:flex-start;display:inline-flex;gap:5px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:14px;border-start-start-radius:4px;}
+.assist-typing span{width:7px;height:7px;border-radius:50%;background:var(--ink-faint);animation:assistBlink 1.2s infinite;}
+.assist-typing span:nth-child(2){animation-delay:.2s;}
+.assist-typing span:nth-child(3){animation-delay:.4s;}
+@keyframes assistBlink{0%,80%,100%{opacity:.25;}40%{opacity:1;}}
+.assist-input-row{
+  display:flex;gap:8px;padding:12px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;
+}
+.assist-input-row input{
+  flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--border);
+  font-family:'Tajawal',sans-serif;font-size:13.5px;background:var(--surface-alt);color:var(--ink);
+}
+.assist-input-row input:focus{outline:2px solid var(--primary-tint);}
+.assist-send{
+  border:none;border-radius:10px;background:var(--primary);color:#fff;cursor:pointer;
+  width:44px;height:44px;font-size:17px;display:inline-flex;align-items:center;justify-content:center;
+  transition:background .15s ease;
+}
+.assist-send:hover{background:var(--primary-dark);}
+.assist-send:disabled{opacity:.5;cursor:not-allowed;}
+.assist-sugg{display:flex;flex-wrap:wrap;gap:8px;}
+.sugg-chip{
+  border:1px solid var(--border);background:var(--surface);color:var(--primary-dark);
+  border-radius:20px;padding:7px 13px;font-family:'Tajawal',sans-serif;font-size:12.5px;font-weight:700;
+  cursor:pointer;transition:background .15s ease;
+}
+.sugg-chip:hover{background:var(--primary-tint);}
+.assist-link{color:var(--primary);font-weight:700;text-decoration:underline;cursor:pointer;}
+html[data-theme="dark"] .sugg-chip{color:var(--primary);}
+
+/* --- مفتاح الوضع الليلي --- */
+.theme-switch{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.theme-toggle{
+  position:relative;width:52px;height:28px;border-radius:20px;border:none;cursor:pointer;
+  background:var(--gray-tint);border:1px solid var(--border);transition:background .2s ease;flex-shrink:0;
+}
+.theme-toggle::after{
+  content:'';position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);transition:transform .2s ease;
+}
+.theme-toggle.on{background:var(--primary);}
+.theme-toggle.on::after{transform:translateX(-24px);}
+
+@media(max-width:640px){
+  .assist-fab{bottom:16px;left:16px;padding:11px 16px;}
+  .assist-panel{left:16px;bottom:74px;width:calc(100vw - 32px);height:calc(100vh - 160px);}
 }
 </style>
 </head>
@@ -439,6 +569,32 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
   </div>
 
   <div id="cardsContainer" class="cards"></div>
+</div>
+
+<!-- المساعد الشخصي الذكي -->
+<button class="assist-fab" id="assistFab" onclick="toggleAssistant()" title="المساعد الذكي">
+  <span class="fab-icon"><img src="doraemon.png" alt="عبقور"></span>
+  <span>المساعد الذكي</span>
+</button>
+<div class="assist-panel" id="assistPanel">
+  <div class="assist-head">
+    <div class="avatar"><img src="doraemon.png" alt="عبقور"></div>
+    <div class="titles"><b>المساعد الذكي</b><span>يجيب عن أسئلتك حول عقودك فقط</span></div>
+    <button class="assist-close" onclick="toggleAssistant()" title="إغلاق">✕</button>
+  </div>
+  <div class="assist-body" id="assistBody">
+    <div class="assist-msg bot">أهلاً! اسألني عن عقودك، مثل: "كم المبلغ المتأخر؟" أو "أي عقد ينتهي قريباً؟"</div>
+    <div class="assist-sugg" id="assistSugg">
+      <button class="sugg-chip" onclick="askQuick('كم المبلغ المتأخر عندي؟')">كم المتأخر؟</button>
+      <button class="sugg-chip" onclick="askQuick('أقرب عقد ينتهي؟ كم يتبقى؟')">أقرب عقد ينتهي؟</button>
+      <button class="sugg-chip" onclick="askQuick('كم عدد العقود النشطة عندي؟')">عدد العقود النشطة</button>
+      <button class="sugg-chip" onclick="askQuick('كم إجمالي المستحق قريباً؟')">مستحقات قريبة</button>
+    </div>
+  </div>
+  <div class="assist-input-row">
+    <input type="text" id="assistInput" placeholder="اكتب سؤالك هنا..." autocomplete="off">
+    <button class="assist-send" id="assistSend" onclick="sendAssistant()" title="إرسال">➤</button>
+  </div>
 </div>
 
 <div class="modal-overlay" id="contractModalOverlay">
@@ -600,6 +756,11 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
 <div class="modal-overlay" id="settingsModalOverlay">
   <div class="modal" style="max-width:420px;">
     <h2>الإعدادات</h2>
+    <div class="field theme-switch">
+      <label style="margin:0;font-size:13px;font-weight:700;">🌙 الوضع الليلي</label>
+      <button type="button" class="theme-toggle" id="themeToggle" title="تبديل الوضع الليلي" onclick="toggleTheme()"></button>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border,#ddd);margin:14px 0;">
     <div class="field"><label>تنبيه قبل استحقاق الدفعة بعدد أيام</label><input type="number" id="paymentAlertDays" min="0" step="1"></div>
     <div class="field"><label>تنبيه قبل نهاية العقد بعدد أيام</label><input type="number" id="endAlertDays" min="0" step="1"></div>
     <hr style="border:none;border-top:1px solid var(--border,#ddd);margin:14px 0;">
@@ -812,10 +973,126 @@ let isAdmin = false;
 let adminExists = false;
 let loginMode = 'login'; // login | setup
 
+// --- الوضع الليلي (محفوظ محلياً في المتصفح) ---
+function applyTheme(dark){
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  const t = document.getElementById('themeToggle');
+  if(t) t.classList.toggle('on', dark);
+}
+function toggleTheme(){
+  const dark = document.documentElement.getAttribute('data-theme') !== 'dark';
+  applyTheme(dark);
+  try{ localStorage.setItem('theme', dark ? 'dark' : 'light'); }catch(e){}
+}
+
+// --- المساعد الشخصي الذكي ---
+function toggleAssistant(){
+  const panel = document.getElementById('assistPanel');
+  const isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open', !isOpen);
+  if(!isOpen) document.getElementById('assistInput').focus();
+}
+function scrollAssist(){
+  const body = document.getElementById('assistBody');
+  if(body) body.scrollTop = body.scrollHeight;
+}
+// يجعل أسماء العقارات والمستأجرين في رد المساعد روابط تفتح صفحة العقد
+function linkifyAnswer(text){
+  let html = escapeHtml(text);
+  const seen = {};
+  const cands = [];
+  contracts.forEach(c => {
+    if(c.propertyName && c.propertyName.length >= 2 && !seen[c.propertyName]){ seen[c.propertyName] = true; cands.push({name:c.propertyName, id:c.id}); }
+    if(c.tenantName && c.tenantName.length >= 2 && !seen[c.tenantName]){ seen[c.tenantName] = true; cands.push({name:c.tenantName, id:c.id}); }
+  });
+  cands.sort((a,b) => b.name.length - a.name.length);
+  cands.forEach((cand, i) => {
+    const esc = escapeHtml(cand.name);
+    const re = new RegExp(esc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    html = html.replace(re, '[[[' + i + ']]]');
+  });
+  cands.forEach((cand, i) => {
+    html = html.split('[[[' + i + ']]]').join('<a class="assist-link" href="#/contract/' + cand.id + '" onclick="event.preventDefault();navigateToContract(\'' + cand.id + '\')">' + escapeHtml(cand.name) + '</a>');
+  });
+  return html;
+}
+
+function hideSuggestions(){
+  const s = document.getElementById('assistSugg');
+  if(s) s.style.display = 'none';
+}
+
+function askQuick(q){
+  document.getElementById('assistInput').value = q;
+  hideSuggestions();
+  sendAssistant();
+}
+
+async function sendAssistant(){
+  const input = document.getElementById('assistInput');
+  const sendBtn = document.getElementById('assistSend');
+  const q = input.value.trim();
+  if(!q || sendBtn.disabled) return;
+  input.value = '';
+  hideSuggestions();
+  const body = document.getElementById('assistBody');
+  body.insertAdjacentHTML('beforeend', '<div class="assist-msg user">' + escapeHtml(q) + '</div>');
+  const msgEl = document.createElement('div');
+  msgEl.className = 'assist-msg bot';
+  msgEl.textContent = '...';
+  body.appendChild(msgEl);
+  scrollAssist();
+  input.disabled = true;
+  sendBtn.disabled = true;
+  let answer = '';
+  try{
+    const res = await fetch('/api/assistant', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + (localStorage.getItem('token') || '') },
+      body: JSON.stringify({ question: q, stream: true })
+    });
+    if(!res.ok || !res.body){
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err.error || 'تعذر الاتصال بالمساعد');
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while(true){
+      const { done, value } = await reader.read();
+      if(done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for(const line of lines){
+        const t = line.trim();
+        if(!t.startsWith('data: ')) continue;
+        let evt;
+        try{ evt = JSON.parse(t.slice(6).trim()); }catch(e){ continue; }
+        if(!evt) continue;
+        if(evt.error) throw new Error(evt.error);
+        if(evt.delta){ answer += evt.delta; msgEl.textContent = answer; scrollAssist(); }
+      }
+    }
+    if(!answer.trim()) answer = 'لم أجد إجابة، جرّب صياغة السؤال بشكل أوضح.';
+    msgEl.innerHTML = linkifyAnswer(answer.trim());
+  }catch(e){
+    msgEl.classList.add('error');
+    msgEl.textContent = e.message || 'تعذر الاتصال بالمساعد';
+  }finally{
+    input.disabled = false;
+    sendBtn.disabled = false;
+    scrollAssist();
+    input.focus();
+  }
+}
+
 async function showLogin(){
   document.getElementById('loginToggleBtn').style.display = 'none';
   document.getElementById('loginError').style.display = 'none';
   document.getElementById('loginModalOverlay').classList.add('open');
+  document.getElementById('assistFab').style.display = 'none';
+  document.getElementById('assistPanel').classList.remove('open');
   document.querySelector('.alerts-row').style.display = 'none';
   document.querySelector('.filters').style.display = 'none';
   document.getElementById('calendarCard').style.display = 'none';
@@ -862,6 +1139,7 @@ async function submitLogin(){
     document.getElementById('userBadge').style.display = '';
     document.getElementById('logoutBtn').style.display = '';
     document.getElementById('accountsBtn').style.display = isAdmin ? '' : 'none';
+    document.getElementById('assistFab').style.display = '';
     hideLogin();
     await loadData();
     render();
@@ -1823,7 +2101,14 @@ document.getElementById('closePassBtn').addEventListener('click', closePassModal
 document.getElementById('savePassBtn').addEventListener('click', savePassword);
 document.getElementById('passInput').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') savePassword(); });
 
+// --- أحداث المساعد الذكي ---
+document.getElementById('assistInput').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') sendAssistant(); });
+document.getElementById('assistSend').addEventListener('click', sendAssistant);
+
 async function init(){
+  try{
+    applyTheme(localStorage.getItem('theme') === 'dark');
+  }catch(e){}
   const token = localStorage.getItem('token');
   if(token){
     try{
@@ -1834,6 +2119,7 @@ async function init(){
       document.getElementById('userBadge').style.display = '';
       document.getElementById('logoutBtn').style.display = '';
       document.getElementById('accountsBtn').style.display = isAdmin ? '' : 'none';
+      document.getElementById('assistFab').style.display = '';
       await loadData();
       render();
       return;

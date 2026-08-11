@@ -9,7 +9,7 @@ const admin = require('firebase-admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'sk-a9e3ac1277034e26922d521ae1315da2';
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 
 // --- إعداد Firebase (قاعدة بيانات سحابية مشتركة) ---
 // الأولوية: متغير بيئة FIREBASE_SERVICE_ACCOUNT (للاستضافة السحابية) ثم ملف serviceAccountKey.json (محلياً)
@@ -652,6 +652,238 @@ function parseDate(str) {
   return str;
 }
 
+// --- المساعد الشخصي الذكي ---
+
+const ASSIST_MAX_HISTORY = 10; // آخر 10 رسائل (5 تبادلات) تُحفظ في ذاكرة المحادثة
+
+// يحوّل عقود المستخدم إلى ملخص نصي يوضح للذكاء الاصطناعي بياناته فقط
+function summarizeContracts(list) {
+  return list.map((c) => {
+    const paid = c.payments.filter((p) => p.status === 'paid' || p.paidAmount >= (p.amount || 0));
+    const partial = c.payments.filter((p) => p.status !== 'paid' && p.paidAmount > 0);
+    const overdue = c.payments.filter((p) => p.status !== 'paid' && p.paidAmount < (p.amount || 0) && new Date(p.date) < new Date());
+    return {
+      id: c.id,
+      propertyName: c.propertyName,
+      tenantName: c.tenantName,
+      tenantPhone: c.tenantPhone,
+      startDate: c.startDate,
+      endDate: c.endDate,
+      totalValue: c.totalValue,
+      hasTax: c.hasTax,
+      taxRate: c.taxRate,
+      paymentFrequency: c.paymentFrequency,
+      cancelled: c.cancelled,
+      payments: c.payments.map((p) => ({
+        label: p.label,
+        date: p.date,
+        amount: p.amount,
+        paidAmount: p.paidAmount || 0,
+        status: p.status,
+      })),
+      counts: { paid: paid.length, partial: partial.length, overdue: overdue.length, total: c.payments.length },
+    };
+  });
+}
+
+// إجماليات محسوبة على الخادم من دفعات المستخدم — يعتمد عليها الذكاء دون إعادة حساب
+function computeAssistantTotals(list, alertDays, endAlertDays) {
+  const totals = {
+    active: 0, upcoming: 0, expired: 0, cancelled: 0,
+    paidCount: 0, paidTotal: 0,
+    unpaidCount: 0, unpaidTotal: 0,
+    overdueCount: 0, overdueTotal: 0,
+    dueSoonCount: 0, dueSoonTotal: 0,
+    partialCount: 0, partialRemaining: 0,
+    endingCount: 0, endingContractIds: [],
+  };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  list.forEach((c) => {
+    if (c.cancelled) { totals.cancelled++; return; }
+    const s = new Date(c.startDate), e = new Date(c.endDate);
+    if (today < s) totals.upcoming++;
+    else if (today > e) totals.expired++;
+    else totals.active++;
+    if (!isNaN(e) && today <= e) {
+      const endDiff = Math.round((e - today) / 86400000);
+      if (endDiff >= 0 && endDiff <= endAlertDays) { totals.endingCount++; totals.endingContractIds.push(c.id); }
+    }
+    (c.payments || []).forEach((p) => {
+      const amount = p.amount || 0;
+      const paid = p.paidAmount || 0;
+      const remaining = Math.max(0, amount - paid);
+      if (p.status === 'paid' || paid >= amount) { totals.paidCount++; totals.paidTotal += amount; return; }
+      totals.unpaidCount++; totals.unpaidTotal += remaining;
+      if (paid > 0) { totals.partialCount++; totals.partialRemaining += remaining; }
+      const due = new Date(p.date);
+      const diff = Math.round((due - today) / 86400000);
+      if (diff < 0) { totals.overdueCount++; totals.overdueTotal += remaining; }
+      else if (diff <= alertDays) { totals.dueSoonCount++; totals.dueSoonTotal += remaining; }
+    });
+  });
+  return totals;
+}
+
+function sseEvent(obj) { return 'data: ' + JSON.stringify(obj) + '\n\n'; }
+
+// مساعد ذكي يجيب عن أسئلة المستخدم بناءً على عقوده فقط، مع ذاكرة محادثة وتدفق
+app.post('/api/assistant', requireAuth, async (req, res) => {
+  const question = String(req.body.question || '').trim();
+  if (!question) return res.status(400).json({ error: 'اكتب سؤالك أولاً' });
+  const isStream = req.body.stream === true;
+  if (!DEEPSEEK_API_KEY) return res.status(500).json({ error: 'DEEPSEEK_API_KEY غير مضبوط — أضفه في متغيرات البيئة' });
+  const token = (req.headers.authorization || '').slice(7);
+  const sess = sessions.get(token);
+  const history = sess && Array.isArray(sess.history) ? sess.history : [];
+
+  try {
+    const list = await getContractsFull(req.user);
+    const settingsSnap = await settingsRef.child(req.user).once('value');
+    const s = settingsSnap.val() || {};
+    const alertDays = Number(s.paymentAlertDays) || 7;
+    const endAlertDays = Number(s.endAlertDays) || 30;
+    const totals = computeAssistantTotals(list, alertDays, endAlertDays);
+    const now = new Date();
+    const nowInfo = {
+      iso: now.toISOString(),
+      date: now.toLocaleDateString('en-CA'),
+      weekday: now.toLocaleDateString('ar-SA', { weekday: 'long' }),
+    };
+    const context = JSON.stringify({ user: req.user, now: nowInfo, totals, contracts: summarizeContracts(list) });
+
+    const prompt = `أنت مساعد شخصي خبير بمتابعة عقود الإيجار داخل تطبيق لإدارة العقود.
+
+المستخدم: ${req.user}
+التاريخ والوقت الحاليان الآن: ${nowInfo.iso} (${nowInfo.date} — ${nowInfo.weekday})
+بيانات عقود المستخدم (JSON فقط — لا تعتمد على أي معلومات خارجها):
+${context}
+
+مهمتك: الإجابة عن سؤال المستخدم الحالي باللغة العربية، معتمدا فقط على بياناته أعلاه وعلى سياق المحادثة السابقة.
+
+قواعد:
+- كن مختصراً جداً: أجب بجملة أو جملتين، واذكر الأرقام والأسماء فقط دون شرح طويل.
+- لا تكرر الأسئلة ولا تفتح بمقدمات مثل "بالتأكيد" أو "سأساعدك".
+- ابدأ بالإجابة مباشرة، ثم إن لزم سطر واحد للتفصيل.
+- إذا كان السؤال عن مبلغ متأخر أو قادم أو مدفوع، استخدم حقل totals المحسوب بدقة على الخادم واذكر النتيجة مباشرة دون إعادة الحساب.
+- اعتمد على "now" في البيانات لتحديد الوقت الحالي، واحسب المدد والتواريخ (كم تبقى، كم مضى) من التاريخ الحالي الفعلي لا من أي تخمين.
+- اذكر اسم العقار واسم المستأجر عند ذكر تفاصيل.
+- إذا كانت البيانات لا تكفي للإجابة، اذكر ذلك بصراحة.
+- لا تفصح عن أي معلومات لأي مستخدم آخر غير المستخدم أعلاه.
+- إذا طلب إنشاء شيء منفصل عن متابعة العقود (كقصيدة أو وصفة أو برمجة)، اعتذر بلطف وذكّره أن مهمتك متابعة عقود الإيجار فقط، واعرض عليه المساعدة في استفسارات عقوده.
+
+سياق المحادثة السابقة (آخر ${ASSIST_MAX_HISTORY} رسالة):
+${history.length ? history.map((m) => (m.role === 'user' ? 'سؤال المستخدم: ' : 'إجابتك: ') + m.content).join('\n\n') : 'لا يوجد'}
+
+سؤال المستخدم الحالي: ${question}`;
+
+    const body = JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: 'أنت مساعد عقارات ذكي مختصر: أجيب مباشرة بجملة أو جملتين بالعربية، بأرقام واضحة، دون مقدمات أو شرح.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 1200,
+      stream: isStream
+    });
+
+    const options = {
+      hostname: 'api.deepseek.com',
+      path: '/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + DEEPSEEK_API_KEY,
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: 90000
+    };
+
+    function saveToHistory(answerText) {
+      if (!sess) return;
+      sess.history = sess.history || [];
+      sess.history.push({ role: 'user', content: question });
+      sess.history.push({ role: 'assistant', content: answerText });
+      if (sess.history.length > ASSIST_MAX_HISTORY) sess.history = sess.history.slice(-ASSIST_MAX_HISTORY);
+    }
+
+    if (isStream) {
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+      let ended = false;
+      const send = (evt) => { if (ended) return; res.write(sseEvent(evt)); };
+      const end = (evt) => { if (ended) return; ended = true; if (evt) res.write(sseEvent(evt)); res.end(); };
+      let answer = '';
+      const httpReq = https.request(options, (response) => {
+        if (response.statusCode !== 200) {
+          let d = '';
+          response.on('data', (chunk) => d += chunk);
+          response.on('end', () => {
+            let msg = 'تعذر استدعاء الذكاء الاصطناعي';
+            try { const j = JSON.parse(d); if (j.error && j.error.message) msg += ': ' + j.error.message; } catch (e) {}
+            end({ error: msg });
+          });
+          return;
+        }
+        response.setEncoding('utf8');
+        let buffer = '';
+        response.on('data', (chunk) => {
+          buffer += chunk;
+          let nl;
+          while ((nl = buffer.indexOf('\n')) !== -1) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const j = JSON.parse(payload);
+              const delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+              if (delta) { answer += delta; send({ delta }); }
+            } catch (e) {}
+          }
+        });
+        response.on('end', () => {
+          saveToHistory(answer.trim());
+          end({ done: true });
+        });
+        response.on('error', (e) => end({ error: 'انقطع الاتصال بالذكاء الاصطناعي: ' + e.message }));
+      });
+      httpReq.on('error', (e) => end({ error: 'تعذر الاتصال بالذكاء الاصطناعي: ' + e.message }));
+      httpReq.on('timeout', () => { httpReq.destroy(); end({ error: 'انتهت مهلة الذكاء الاصطناعي' }); });
+      httpReq.write(body);
+      httpReq.end();
+      return;
+    }
+
+    const httpReq = https.request(options, (response) => {
+      let data = '';
+      response.on('data', (chunk) => data += chunk);
+      response.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.error) return res.status(502).json({ error: 'تعذر استدعاء الذكاء الاصطناعي: ' + json.error.message });
+          const content = json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
+          if (!content) return res.status(502).json({ error: 'رد فارغ من الذكاء الاصطناعي' });
+          saveToHistory(content.trim());
+          res.json({ answer: content.trim() });
+        } catch (e) {
+          res.status(502).json({ error: 'فشل تحليل رد الذكاء الاصطناعي' });
+        }
+      });
+    });
+    httpReq.on('error', (e) => res.status(502).json({ error: 'تعذر الاتصال بالذكاء الاصطناعي: ' + e.message }));
+    httpReq.on('timeout', () => { httpReq.destroy(); res.status(502).json({ error: 'انتهت مهلة الذكاء الاصطناعي' }); });
+    httpReq.write(body);
+    httpReq.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر تجهيز بيانات المساعد' });
+  }
+});
+
 // --- إعدادات التنبيهات (مخزنة في Realtime Database) ---
 app.get('/api/settings', requireAuth, async (req, res) => {
   try {
@@ -683,6 +915,7 @@ app.put('/api/settings', requireAuth, async (req, res) => {
 
 function callDeepSeek(text) {
   return new Promise((resolve, reject) => {
+    if(!DEEPSEEK_API_KEY){ reject(new Error('DEEPSEEK_API_KEY غير مضبوط — أضفه في متغيرات البيئة')); return; }
     const prompt = `استخرج بيانات عقد الإيجار هذا وأرجع JSON فقط
 
 الحقول المطلوبة:
