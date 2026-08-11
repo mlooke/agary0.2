@@ -1062,7 +1062,8 @@ function getNextPayment(c){
 }
 
 function showPaymentWaBtn(c, p){
-  if(!c.tenantPhone || p.status === 'paid' || p.reminderSent) return false;
+  if(!c.tenantPhone || p.status === 'paid') return false;
+  if(WA_ONE_TIME_SEND && p.reminderSent) return false;
   const dd = diffDays(todayStr(), new Date(p.date));
   if(dd < 0) return true;
   if(p !== getNextPayment(c)) return false;
@@ -1070,7 +1071,8 @@ function showPaymentWaBtn(c, p){
 }
 
 function showEndWaBtn(c){
-  if(!c.tenantPhone || c.endReminderSent || getStatus(c) !== 'active') return false;
+  if(!c.tenantPhone || getStatus(c) !== 'active') return false;
+  if(WA_ONE_TIME_SEND && c.endReminderSent) return false;
   const endDays = diffDays(todayStr(), new Date(c.endDate));
   return endDays >= 0 && endDays <= (settings.endAlertDays || 0);
 }
@@ -1080,9 +1082,11 @@ function sendPaymentWa(ev, cid, idx, url){
   const c = contracts.find(x=>x.id===cid);
   if(!c || !c.payments[idx]) return;
   window.open(url, '_blank');
-  c.payments[idx].reminderSent = true;
-  render();
-  apiSend('/api/contracts/'+cid+'/payments/'+idx, 'PATCH', { reminderSent: true }).catch(()=>{});
+  if(WA_ONE_TIME_SEND){
+    c.payments[idx].reminderSent = true;
+    render();
+    apiSend('/api/contracts/'+cid+'/payments/'+idx, 'PATCH', { reminderSent: true }).catch(()=>{});
+  }
 }
 
 function sendEndWa(ev, cid, url){
@@ -1090,9 +1094,11 @@ function sendEndWa(ev, cid, url){
   const c = contracts.find(x=>x.id===cid);
   if(!c) return;
   window.open(url, '_blank');
-  c.endReminderSent = true;
-  render();
-  apiSend('/api/contracts/'+cid, 'PATCH', { endReminderSent: true }).catch(()=>{});
+  if(WA_ONE_TIME_SEND){
+    c.endReminderSent = true;
+    render();
+    apiSend('/api/contracts/'+cid, 'PATCH', { endReminderSent: true }).catch(()=>{});
+  }
 }
 
 function hasOverduePayment(c){
@@ -1436,6 +1442,8 @@ function renderDetail(id){
 }
 
 let _selectedPayStatus = {};
+
+const WA_ONE_TIME_SEND = false; // ⬅ ضع true لإعادة تفعيل "إرسال لمرة واحدة"
 
 function showPaymentStatusMenu(id, idx, btn){
   document.querySelectorAll('.pay-popup.show').forEach(p=>p.classList.remove('show'));
