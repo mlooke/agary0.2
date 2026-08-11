@@ -127,6 +127,7 @@ async function getContractsFull(owner) {
       date: p.date || '',
       status: p.status || 'unpaid',
       amount: p.amount || 0,
+      paidAmount: p.paidAmount || 0,
     })),
   }));
   list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -365,6 +366,7 @@ async function insertContractFn(c, id, owner) {
       date: p.date || '',
       status: p.status || 'unpaid',
       amount: p.amount || 0,
+      paidAmount: p.paidAmount || 0,
     })),
   });
 }
@@ -450,7 +452,7 @@ app.put('/api/contracts/:id', requireAuth, async (req, res) => {
 // تبديل حالة سداد دفعة واحدة
 app.patch('/api/contracts/:id/payments/:index', requireAuth, async (req, res) => {
   const { id, index } = req.params;
-  const { status } = req.body;
+  const { status, paidAmount } = req.body;
   try {
     const ref = contractsRef.child(id);
     const snap = await ref.once('value');
@@ -459,7 +461,10 @@ app.patch('/api/contracts/:id/payments/:index', requireAuth, async (req, res) =>
     const payments = Object.values(c.payments || {}).map((p) => ({ ...p }));
     const target = payments[Number(index)];
     if (!target) return res.status(404).json({ error: 'الدفعة غير موجودة' });
-    payments[Number(index)] = { ...target, status };
+    const updated = { ...target };
+    if (status !== undefined) updated.status = status;
+    if (paidAmount !== undefined) updated.paidAmount = Math.max(0, Number(paidAmount) || 0);
+    payments[Number(index)] = updated;
     await ref.update({ payments });
     res.json({ ok: true });
   } catch (err) {

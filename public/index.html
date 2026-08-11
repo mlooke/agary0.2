@@ -207,6 +207,7 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
   transform:translate(50%,-50%);box-shadow:0 1px 3px rgba(0,0,0,0.25);cursor:default;
 }
 .timeline-marker.paid{background:var(--success);}
+.timeline-marker.partial{background:var(--gold);}
 .timeline-marker.due-soon{background:var(--warning);}
 .timeline-marker.overdue{background:var(--danger);}
 .timeline-marker.upcoming{background:var(--gray);}
@@ -232,6 +233,7 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
   cursor:pointer;white-space:nowrap;font-family:'Tajawal',sans-serif;
 }
 .pay-toggle.paid{background:var(--success-tint);color:var(--success);}
+.pay-toggle.partial{background:var(--gold-tint);color:var(--gold);}
 .pay-toggle.unpaid-normal{background:var(--gray-tint);color:var(--ink-soft);}
 .pay-toggle.unpaid-due{background:var(--warning-tint);color:var(--warning);}
 .pay-toggle.unpaid-overdue{background:var(--danger-tint);color:var(--danger);}
@@ -250,6 +252,7 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
 }
 .pay-popup-btn:hover{opacity:0.85;}
 .pay-popup-btn.opt-paid{background:var(--success-tint);color:var(--success);}
+.pay-popup-btn.opt-partial{background:var(--gold-tint);color:var(--gold);}
 .pay-popup-btn.opt-unpaid{background:var(--gray-tint);color:var(--ink-soft);}
 .pay-popup-btn.opt-confirm{background:var(--primary);color:#fff;margin-top:4px;}
 
@@ -956,6 +959,7 @@ const statusLabel = { active:'نشط', upcoming:'قادم', expired:'منتهي'
 
 function paymentUrgency(payment){
   if(payment.status === 'paid') return 'paid';
+  if(payment.paidAmount > 0) return 'partial';
   const dd = diffDays(todayStr(), new Date(payment.date));
   if(dd < 0) return 'overdue';
   if(dd <= settings.paymentAlertDays) return 'due-soon';
@@ -991,6 +995,7 @@ function renderTimeline(c){
 
 function payToggleClass(payment){
   if(payment.status === 'paid') return 'paid';
+  if(payment.paidAmount > 0) return 'partial';
   const u = paymentUrgency(payment);
   if(u === 'overdue') return 'unpaid-overdue';
   if(u === 'due-soon') return 'unpaid-due';
@@ -1081,7 +1086,7 @@ function contractCardHtml(c){
     <div class="next-payment-row">
       ${overdue ? `<span class="overdue-flag">⚠ يوجد دفعة متأخرة</span>` : '<span></span>'}
       ${nextPay
-        ? `<div class="next-payment"><span class="np-label">الدفعة القادمة:</span> ${fmtDate(nextPay.date)} · <span class="np-amount">${fmtMoney(nextPay.amount || 0)}</span></div>`
+        ? `<div class="next-payment"><span class="np-label">الدفعة القادمة:</span> ${fmtDate(nextPay.date)} · <span class="np-amount">${fmtMoney(nextPay.amount || 0)}</span>${nextPay.paidAmount>0 ? ` <span style="color:var(--gold);">متبقي ${fmtMoney(Math.max(0,(nextPay.amount||0)-(nextPay.paidAmount||0)))}</span>` : ''}</div>`
         : `<div class="next-payment-done">✓ لا توجد دفعات متبقية</div>`}
     </div>
   </div>`;
@@ -1201,7 +1206,7 @@ function renderCalendar(){
       if(isNaN(d) || d.getFullYear() !== year || d.getMonth() !== month) return;
       (dayData[d.getDate()] = dayData[d.getDate()] || []).push({
         type:'payment', contractId:c.id, contractName:c.propertyName,
-        label:p.label, amount:p.amount, status:p.status
+        label:p.label, amount:p.amount, status:p.status, paidAmount:p.paidAmount || 0
       });
     });
     if(c.endDate){
@@ -1240,7 +1245,7 @@ function renderCalendar(){
     if(!items.length) return;
     cell.addEventListener('mouseenter', () => {
       tip.innerHTML = items.map(i => i.type === 'payment'
-        ? `<div class="tt-item"><span class="tt-type ${i.status==='paid'?'pay-paid':'pay'}">${i.status==='paid'?'مدفوعة':'دفعة'}</span><b>${escapeHtml(i.contractName)}</b><div style="color:#FFD54F;margin-top:2px;font-size:12px;">${escapeHtml(i.label||'')} · ${fmtMoney(i.amount||0)}</div></div>`
+        ? `<div class="tt-item"><span class="tt-type ${i.status==='paid'?'pay-paid':'pay'}">${i.status==='paid'?'مدفوعة':(i.paidAmount>0?'سداد جزئي':'دفعة')}</span><b>${escapeHtml(i.contractName)}</b><div style="color:#FFD54F;margin-top:2px;font-size:12px;">${escapeHtml(i.label||'')} · ${fmtMoney(i.amount||0)}${i.paidAmount>0 && i.status!=='paid' ? `<span style="color:#fff;"> · مدفوع ${fmtMoney(i.paidAmount)} (${Math.min(100,Math.round(i.paidAmount/i.amount*100))}%)</span>` : ''}</div></div>`
         : `<div class="tt-item"><span class="tt-type end">انتهاء</span><b>${escapeHtml(i.contractName)}</b><div style="color:#FF9D8F;margin-top:2px;font-size:12px;">نهاية العقد</div></div>`
       ).join('');
       tip.style.display = 'block';
@@ -1303,13 +1308,18 @@ function renderDetail(id){
       <div class="payments">
         ${c.payments.map((p,idx)=>`
           <div class="payment" style="position:relative;">
-            <div><div class="p-label">${escapeHtml(p.label)}</div><div class="p-date">${fmtDate(p.date)}</div><div class="p-date" style="color:var(--gold);">${fmtMoney(p.amount || 0)}</div></div>
+            <div><div class="p-label">${escapeHtml(p.label)}</div><div class="p-date">${fmtDate(p.date)}</div><div class="p-date" style="color:var(--gold);">${fmtMoney(p.amount || 0)}</div>${(p.paidAmount>0 && p.status!=='paid') ? `<div class="p-date" style="color:var(--gold);font-size:11px;">مدفوع ${fmtMoney(p.paidAmount)} من ${fmtMoney(p.amount)} (${Math.min(100,Math.round(p.paidAmount/p.amount*100))}%)</div>` : ''}</div>
             <button class="pay-toggle ${payToggleClass(p)}" onclick="showPaymentStatusMenu('${c.id}', ${idx}, this)">
-              ${p.status === 'paid' ? '✓ مدفوعة' : (paymentUrgency(p)==='overdue' ? 'متأخرة' : (paymentUrgency(p)==='due-soon' ? 'مستحقة قريبًا' : 'غير مدفوعة'))}
+              ${p.status === 'paid' ? '✓ مدفوعة' : (p.paidAmount>0 ? 'مدفوعة جزئياً (' + Math.min(100,Math.round(p.paidAmount/p.amount*100)) + '%)' : (paymentUrgency(p)==='overdue' ? 'متأخرة' : (paymentUrgency(p)==='due-soon' ? 'مستحقة قريبًا' : 'غير مدفوعة')))}
             </button>
             <div class="pay-popup" id="payPopup-${c.id}-${idx}">
+              <button class="pay-popup-btn opt-partial" onclick="selectPaymentStatus('${c.id}', ${idx}, 'partial')">${p.paidAmount>0?'✓ ':''}سداد جزئي</button>
               <button class="pay-popup-btn opt-paid" onclick="selectPaymentStatus('${c.id}', ${idx}, 'paid')">${p.status==='paid'?'✓ ':''}مدفوعة</button>
-              <button class="pay-popup-btn opt-unpaid" onclick="selectPaymentStatus('${c.id}', ${idx}, 'unpaid')">${p.status==='unpaid'?'✓ ':''}غير مدفوعة</button>
+              <button class="pay-popup-btn opt-unpaid" onclick="selectPaymentStatus('${c.id}', ${idx}, 'unpaid')">${p.status==='unpaid' && !p.paidAmount?'✓ ':''}غير مدفوعة</button>
+              <div class="pay-partial-wrap" style="display:none;padding:4px 2px;">
+                <label style="font-size:11.5px;color:var(--ink-soft);">المبلغ المدفوع</label>
+                <input type="number" id="payPartial-${c.id}-${idx}" value="${p.paidAmount || p.amount || ''}" min="0" step="0.01" style="width:100%;margin-top:4px;padding:6px;border:1px solid var(--border,#ddd);border-radius:8px;font-family:'Cairo',sans-serif;">
+              </div>
               <button class="pay-popup-btn opt-confirm" onclick="confirmPaymentStatus('${c.id}', ${idx})">تم</button>
             </div>
           </div>`).join('')}
@@ -1334,13 +1344,17 @@ function showPaymentStatusMenu(id, idx, btn){
   document.querySelectorAll('.pay-popup.show').forEach(p=>p.classList.remove('show'));
   const popup = document.getElementById('payPopup-'+id+'-'+idx);
   if(!popup) return;
-  _selectedPayStatus[id+'-'+idx] = contracts.find(x=>x.id===id).payments[idx].status;
+  const p = contracts.find(x=>x.id===id).payments[idx];
+  _selectedPayStatus[id+'-'+idx] = p.status === 'paid' ? 'paid' : (p.paidAmount>0 ? 'partial' : p.status);
   popup.querySelectorAll('.pay-popup-btn').forEach(b=>{
     b.style.outline = 'none';
   });
   const current = _selectedPayStatus[id+'-'+idx];
-  const highlight = popup.querySelector(current==='paid' ? '.opt-paid' : '.opt-unpaid');
+  const sel = current==='paid' ? '.opt-paid' : (current==='partial' ? '.opt-partial' : '.opt-unpaid');
+  const highlight = popup.querySelector(sel);
   if(highlight) highlight.style.outline = '2px solid var(--primary)';
+  const wrap = popup.querySelector('.pay-partial-wrap');
+  if(wrap) wrap.style.display = (current==='partial') ? 'block' : 'none';
   popup.classList.add('show');
 }
 
@@ -1349,20 +1363,33 @@ function selectPaymentStatus(id, idx, status){
   const popup = document.getElementById('payPopup-'+id+'-'+idx);
   if(!popup) return;
   popup.querySelectorAll('.pay-popup-btn').forEach(b=>b.style.outline='none');
-  const btn = popup.querySelector(status==='paid' ? '.opt-paid' : '.opt-unpaid');
+  const sel = status==='paid' ? '.opt-paid' : (status==='partial' ? '.opt-partial' : '.opt-unpaid');
+  const btn = popup.querySelector(sel);
   if(btn) btn.style.outline = '2px solid var(--primary)';
+  const wrap = popup.querySelector('.pay-partial-wrap');
+  if(wrap) wrap.style.display = (status==='partial') ? 'block' : 'none';
 }
 
 async function confirmPaymentStatus(id, idx){
   const key = id+'-'+idx;
-  const newStatus = _selectedPayStatus[key];
-  if(!newStatus) return;
+  const sel = _selectedPayStatus[key];
+  if(!sel) return;
   const c = contracts.find(x=>x.id===id);
   if(!c) return;
-  c.payments[idx].status = newStatus;
-  document.querySelectorAll('.pay-popup.show').forEach(p=>p.classList.remove('show'));
+  const p = c.payments[idx];
+  if(sel === 'partial'){
+    const input = document.getElementById('payPartial-'+id+'-'+idx);
+    const paid = parseFloat(input ? input.value : '');
+    if(isNaN(paid) || paid < 0){ alert('أدخل مبلغاً صحيحاً'); return; }
+    if(paid >= p.amount){ p.status = 'paid'; p.paidAmount = p.amount; }
+    else { p.status = 'unpaid'; p.paidAmount = paid; }
+  }else{
+    p.status = sel;
+    p.paidAmount = sel === 'paid' ? p.amount : 0;
+  }
+  document.querySelectorAll('.pay-popup.show').forEach(pop=>pop.classList.remove('show'));
   render();
-  try{ await apiSend(`/api/contracts/${id}/payments/${idx}`, 'PATCH', { status: newStatus }); }
+  try{ await apiSend(`/api/contracts/${id}/payments/${idx}`, 'PATCH', { status: p.status, paidAmount: p.paidAmount }); }
   catch(e){ alert('تعذر تحديث حالة الدفعة، تحقق من الاتصال بالخادم'); }
 }
 
