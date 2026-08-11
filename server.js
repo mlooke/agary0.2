@@ -122,12 +122,14 @@ async function getContractsFull(owner) {
     taxRate: c.taxRate || 15,
     paymentFrequency: c.paymentFrequency || 'custom',
     createdAt: c.createdAt || 0,
+    endReminderSent: c.endReminderSent || false,
     payments: Object.values(c.payments || {}).map((p) => ({
       label: p.label || '',
       date: p.date || '',
       status: p.status || 'unpaid',
       amount: p.amount || 0,
       paidAmount: p.paidAmount || 0,
+      reminderSent: p.reminderSent || false,
     })),
   }));
   list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -367,6 +369,7 @@ async function insertContractFn(c, id, owner) {
       status: p.status || 'unpaid',
       amount: p.amount || 0,
       paidAmount: p.paidAmount || 0,
+      reminderSent: p.reminderSent || false,
     })),
   });
 }
@@ -435,11 +438,14 @@ app.put('/api/contracts/:id', requireAuth, async (req, res) => {
       taxRate: c.taxRate || 15,
       paymentFrequency: c.paymentFrequency || 'custom',
       createdAt: admin.database.ServerValue.TIMESTAMP,
+      endReminderSent: cur.endReminderSent || false,
       payments: (c.payments || []).map((p) => ({
         label: p.label || '',
         date: p.date || '',
         status: p.status || 'unpaid',
         amount: p.amount || 0,
+        paidAmount: p.paidAmount || 0,
+        reminderSent: p.reminderSent || false,
       })),
     });
     res.json({ ok: true });
@@ -449,10 +455,28 @@ app.put('/api/contracts/:id', requireAuth, async (req, res) => {
   }
 });
 
+// تحديث حقل على العقد (مثل تذكير انتهاء العقد)
+app.patch('/api/contracts/:id', requireAuth, async (req, res) => {
+  const id = req.params.id;
+  const fields = {};
+  if (req.body.endReminderSent !== undefined) fields.endReminderSent = !!req.body.endReminderSent;
+  try {
+    const ref = contractsRef.child(id);
+    const snap = await ref.once('value');
+    const cur = snap.val();
+    if (!cur || cur.owner !== req.user) return res.status(404).json({ error: 'العقد غير موجود' });
+    await ref.update(fields);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر تحديث العقد' });
+  }
+});
+
 // تبديل حالة سداد دفعة واحدة
 app.patch('/api/contracts/:id/payments/:index', requireAuth, async (req, res) => {
   const { id, index } = req.params;
-  const { status, paidAmount } = req.body;
+  const { status, paidAmount, reminderSent } = req.body;
   try {
     const ref = contractsRef.child(id);
     const snap = await ref.once('value');
@@ -464,6 +488,7 @@ app.patch('/api/contracts/:id/payments/:index', requireAuth, async (req, res) =>
     const updated = { ...target };
     if (status !== undefined) updated.status = status;
     if (paidAmount !== undefined) updated.paidAmount = Math.max(0, Number(paidAmount) || 0);
+    if (reminderSent !== undefined) updated.reminderSent = !!reminderSent;
     payments[Number(index)] = updated;
     await ref.update({ payments });
     res.json({ ok: true });

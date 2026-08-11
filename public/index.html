@@ -94,6 +94,8 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
 .alert-card.warning .num{color:var(--warning);}
 .alert-card.info{border-top-color:var(--primary);}
 .alert-card.info .num{color:var(--primary);}
+.alert-card.muted{border-top-color:var(--gold);}
+.alert-card.muted .num{color:var(--gold);}
 
 .calendar-card{
   background:var(--surface);border-radius:16px;box-shadow:var(--shadow);
@@ -237,6 +239,13 @@ h1,h2,h3,.display{font-family:'Cairo',sans-serif;}
 .pay-toggle.unpaid-normal{background:var(--gray-tint);color:var(--ink-soft);}
 .pay-toggle.unpaid-due{background:var(--warning-tint);color:var(--warning);}
 .pay-toggle.unpaid-overdue{background:var(--danger-tint);color:var(--danger);}
+.wa-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  background:#E7F9EE;color:#0A6B3D;border:1px solid #0A6B3D33;border-radius:8px;
+  padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:none;
+  white-space:nowrap;font-family:'Tajawal',sans-serif;
+}
+.wa-btn:hover{filter:brightness(0.96);}
 
 .pay-popup{
   position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
@@ -397,6 +406,7 @@ legend{font-size:12px;font-weight:700;color:var(--primary-dark);padding:0 6px;}
     <div class="alert-card danger" id="alertOverdue" onclick="toggleAlertFilter('overdue')"><div><div class="num">0</div><div class="lbl">دفعات متأخرة</div></div></div>
     <div class="alert-card warning" id="alertDueSoon" onclick="toggleAlertFilter('due-soon')"><div><div class="num">0</div><div class="lbl">دفعات مستحقة قريبًا</div></div></div>
     <div class="alert-card info" id="alertEnding" onclick="toggleAlertFilter('ending')"><div><div class="num">0</div><div class="lbl">عقود تقترب من الانتهاء</div></div></div>
+    <div class="alert-card muted" id="alertUnsent" onclick="toggleAlertFilter('unsent')"><div><div class="num">0</div><div class="lbl">تذكيرات غير مرسلة</div></div></div>
   </div>
 
   <div class="calendar-card" id="calendarCard">
@@ -738,8 +748,47 @@ function renderPaymentsFields(){
 }
 
 function todayStr(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
-function fmtDate(iso){ if(!iso) return '—'; return new Date(iso).toLocaleDateString('ar-EG',{year:'numeric',month:'short',day:'numeric'}); }
+function fmtDate(iso){ if(!iso) return '—'; return new Date(iso).toLocaleDateString('ar-EG-u-nu-latn',{year:'numeric',month:'short',day:'numeric'}); }
 function fmtMoney(n){ if(isNaN(n)) return '0.00'; return Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+function waPhone(p){
+  if(!p) return '';
+  let d = String(p).replace(/[^\d]/g,'');
+  if(d.startsWith('00')) d = d.slice(2);
+  if(d.startsWith('0')) d = '966' + d.slice(1);
+  return d;
+}
+function waUrl(phone, msg){
+  return 'https://wa.me/' + waPhone(phone) + '?text=' + encodeURIComponent(msg);
+}
+function paymentWhatsMsg(c, p){
+  const prop = c.propertyName || 'العقار';
+  const amount = fmtMoney(p.amount || 0);
+  const date = fmtDate(p.date);
+  const label = p.label || '';
+  if(p.paidAmount > 0 && p.status !== 'paid'){
+    const rem = fmtMoney(Math.max(0,(p.amount||0)-(p.paidAmount||0)));
+    return 'عزيزي المستأجر،\n\n'
+      + 'نذكّركم بالمتبقي ' + rem + ' من دفعة "' + label + '" لإيجار "' + prop + '".\n\n'
+      + 'تاريخ الاستحقاق: ' + date + '\n\n'
+      + 'شكراً لالتزامكم بمواعيد السداد.';
+  }
+  const dd = diffDays(todayStr(), new Date(p.date));
+  const head = dd < 0 ? 'نذكّركم بدفع إيجار "' + prop + '".' : 'نذكّركم باقتراب موعد دفع إيجار "' + prop + '".';
+  return 'عزيزي المستأجر،\n\n'
+    + head + '\n\n'
+    + 'القسط: "' + label + '"\n'
+    + 'المبلغ: ' + amount + '\n'
+    + 'تاريخ الاستحقاق: ' + date + '\n\n'
+    + 'شكراً لالتزامكم بمواعيد السداد.';
+}
+function endWhatsMsg(c){
+  const prop = c.propertyName || 'العقار';
+  return 'عزيزي المستأجر،\n\n'
+    + 'نعلمكم بأن عقد إيجار "' + prop + '" سينتهي بتاريخ ' + fmtDate(c.endDate) + '.\n\n'
+    + 'للرغبة في التجديد، يرجى مراسلتنا قبل الموعد بشهر.\n\n'
+    + 'شكراً لتعاملكم معنا.';
+}
 function diffDays(fromDate, toDate){ return Math.round((toDate - fromDate) / (1000*60*60*24)); }
 
 async function apiGet(url){
@@ -1012,6 +1061,40 @@ function getNextPayment(c){
   return unpaid.length ? unpaid[0] : null;
 }
 
+function showPaymentWaBtn(c, p){
+  if(!c.tenantPhone || p.status === 'paid' || p.reminderSent) return false;
+  const dd = diffDays(todayStr(), new Date(p.date));
+  if(dd < 0) return true;
+  if(p !== getNextPayment(c)) return false;
+  return dd <= (settings.paymentAlertDays || 0);
+}
+
+function showEndWaBtn(c){
+  if(!c.tenantPhone || c.endReminderSent || getStatus(c) !== 'active') return false;
+  const endDays = diffDays(todayStr(), new Date(c.endDate));
+  return endDays >= 0 && endDays <= (settings.endAlertDays || 0);
+}
+
+function sendPaymentWa(ev, cid, idx, url){
+  ev.preventDefault();
+  const c = contracts.find(x=>x.id===cid);
+  if(!c || !c.payments[idx]) return;
+  window.open(url, '_blank');
+  c.payments[idx].reminderSent = true;
+  render();
+  apiSend('/api/contracts/'+cid+'/payments/'+idx, 'PATCH', { reminderSent: true }).catch(()=>{});
+}
+
+function sendEndWa(ev, cid, url){
+  ev.preventDefault();
+  const c = contracts.find(x=>x.id===cid);
+  if(!c) return;
+  window.open(url, '_blank');
+  c.endReminderSent = true;
+  render();
+  apiSend('/api/contracts/'+cid, 'PATCH', { endReminderSent: true }).catch(()=>{});
+}
+
 function hasOverduePayment(c){
   return (c.payments || []).some(p => p.status !== 'paid' && paymentUrgency(p) === 'overdue');
 }
@@ -1044,7 +1127,7 @@ function toggleAlertFilter(type){
   }
   document.querySelectorAll('.alert-card').forEach(el=>el.classList.remove('active-filter'));
   if(activeAlertFilter){
-    const map = { 'overdue':'alertOverdue', 'due-soon':'alertDueSoon', 'ending':'alertEnding' };
+    const map = { 'overdue':'alertOverdue', 'due-soon':'alertDueSoon', 'ending':'alertEnding', 'unsent':'alertUnsent' };
     document.getElementById(map[activeAlertFilter]).classList.add('active-filter');
   }
   renderList();
@@ -1103,22 +1186,25 @@ function renderList(){
 
   const activeContracts = contracts.filter(c => !isArchived(c));
 
-  let overdueCount = 0, dueSoonCount = 0, endingCount = 0;
+  let overdueCount = 0, dueSoonCount = 0, endingCount = 0, unsentCount = 0;
   activeContracts.forEach(c=>{
     const st = getStatus(c);
     c.payments.forEach(p=>{
       const u = paymentUrgency(p);
       if(u === 'overdue') overdueCount++;
       if(u === 'due-soon') dueSoonCount++;
+      if(showPaymentWaBtn(c, p)) unsentCount++;
     });
     if(st === 'active'){
       const dd = diffDays(todayStr(), new Date(c.endDate));
       if(dd >= 0 && dd <= settings.endAlertDays) endingCount++;
+      if(showEndWaBtn(c)) unsentCount++;
     }
   });
   document.querySelector('#alertOverdue .num').textContent = overdueCount;
   document.querySelector('#alertDueSoon .num').textContent = dueSoonCount;
   document.querySelector('#alertEnding .num').textContent = endingCount;
+  document.querySelector('#alertUnsent .num').textContent = unsentCount;
 
   let filtered = activeContracts.filter(c=>{
     const matchesSearch = !search || c.propertyName.toLowerCase().includes(search);
@@ -1136,6 +1222,11 @@ function renderList(){
       if(st !== 'active') return false;
       const dd = diffDays(todayStr(), new Date(c.endDate));
       return dd >= 0 && dd <= settings.endAlertDays;
+    }
+    if(activeAlertFilter === 'unsent'){
+      if(c.payments.some(p=>showPaymentWaBtn(c, p))) return true;
+      if(showEndWaBtn(c)) return true;
+      return false;
     }
     return true;
   });
@@ -1297,7 +1388,10 @@ function renderDetail(id){
           <p class="prop-name">${escapeHtml(c.propertyName)}</p>
           <p class="prop-dates">${fmtDate(c.startDate)} — ${fmtDate(c.endDate)} · ${freqLabel[c.paymentFrequency] || 'مخصص'}${endNote}</p>
         </div>
-        <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${showEndWaBtn(c) ? `<a class="wa-btn" target="_blank" href="${waUrl(c.tenantPhone, endWhatsMsg(c))}" onclick="sendEndWa(event,'${c.id}',this.href)">تذكير انتهاء العقد</a>` : ''}
+          <div class="stamp ${st}"><span>${statusLabel[st]}</span></div>
+        </div>
       </div>
       ${renderTimeline(c)}
       <div class="value-row">
@@ -1309,9 +1403,12 @@ function renderDetail(id){
         ${c.payments.map((p,idx)=>`
           <div class="payment" style="position:relative;">
             <div><div class="p-label">${escapeHtml(p.label)}</div><div class="p-date">${fmtDate(p.date)}</div><div class="p-date" style="color:var(--gold);">${fmtMoney(p.amount || 0)}</div>${(p.paidAmount>0 && p.status!=='paid') ? `<div class="p-date" style="color:var(--gold);font-size:11px;">مدفوع ${fmtMoney(p.paidAmount)} من ${fmtMoney(p.amount)} (${Math.min(100,Math.round(p.paidAmount/p.amount*100))}%)</div>` : ''}</div>
-            <button class="pay-toggle ${payToggleClass(p)}" onclick="showPaymentStatusMenu('${c.id}', ${idx}, this)">
-              ${p.status === 'paid' ? '✓ مدفوعة' : (p.paidAmount>0 ? 'مدفوعة جزئياً (' + Math.min(100,Math.round(p.paidAmount/p.amount*100)) + '%)' : (paymentUrgency(p)==='overdue' ? 'متأخرة' : (paymentUrgency(p)==='due-soon' ? 'مستحقة قريبًا' : 'غير مدفوعة')))}
-            </button>
+            <div style="display:flex;flex-direction:column;align-items:stretch;gap:6px;">
+              <button class="pay-toggle ${payToggleClass(p)}" onclick="showPaymentStatusMenu('${c.id}', ${idx}, this)">
+                ${p.status === 'paid' ? '✓ مدفوعة' : (p.paidAmount>0 ? 'مدفوعة جزئياً (' + Math.min(100,Math.round(p.paidAmount/p.amount*100)) + '%)' : (paymentUrgency(p)==='overdue' ? 'متأخرة' : (paymentUrgency(p)==='due-soon' ? 'مستحقة قريبًا' : 'غير مدفوعة')))}
+              </button>
+              ${showPaymentWaBtn(c, p) ? `<a class="wa-btn" target="_blank" href="${waUrl(c.tenantPhone, paymentWhatsMsg(c, p))}" onclick="sendPaymentWa(event,'${c.id}',${idx},this.href)">تذكير واتساب</a>` : ''}
+            </div>
             <div class="pay-popup" id="payPopup-${c.id}-${idx}">
               <button class="pay-popup-btn opt-partial" onclick="selectPaymentStatus('${c.id}', ${idx}, 'partial')">${p.paidAmount>0?'✓ ':''}سداد جزئي</button>
               <button class="pay-popup-btn opt-paid" onclick="selectPaymentStatus('${c.id}', ${idx}, 'paid')">${p.status==='paid'?'✓ ':''}مدفوعة</button>
